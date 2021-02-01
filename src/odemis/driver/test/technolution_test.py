@@ -53,7 +53,7 @@ logging.getLogger().setLevel(logging.DEBUG)
 # Export TEST_NOHW = 1 to prevent using the real hardware
 TEST_NOHW = (os.environ.get("TEST_NOHW", "0") != "0")  # Default to Hw testing
 
-URL = "http://localhost:8080/v2"
+URL = "http://192.168.10.10:8080/v2"
 
 # Configuration of the children of the AcquisitionServer object
 CONFIG_SCANNER = {"name": "MultiBeam Scanner", "role": "multibeam"}
@@ -62,10 +62,14 @@ CONFIG_MPPC = {"name": "MPPC", "role": "mppc"}
 CHILDREN_ASM = {"EBeamScanner"   : CONFIG_SCANNER,
                 "MirrorDescanner": CONFIG_DESCANNER,
                 "MPPC"           : CONFIG_MPPC}
-EXTERNAL_STORAGE = {"host"     : "localhost",
-                   "username" : "username",
-                   "password" : "password",
-                   "directory": "asm_service"}
+# EXTERNAL_STORAGE = {"host"     : "localhost",
+#                    "username" : "username",
+#                    "password" : "password",
+#                    "directory": "asm_service"}
+EXTERNAL_STORAGE = {"host": "192.168.10.16:21",
+                    "username": "asmftp",
+                    "password": "fastem",
+                    "directory": "asm_service"}
 
 
 class TestAuxiliaryFunc(unittest.TestCase):
@@ -1331,7 +1335,7 @@ class Test_ASMDataFlow(unittest.TestCase):
         pass
 
     def setUp(self):
-        self.ASM_manager = AcquisitionServer("ASM", "asm", URL, CHILDREN_ASM, EXTRNAL_STORAGE)
+        self.ASM_manager = AcquisitionServer("ASM", "asm", URL, CHILDREN_ASM, EXTERNAL_STORAGE)
         for child in self.ASM_manager.children.value:
             if child.name == CONFIG_MPPC["name"]:
                 self.MPPC = child
