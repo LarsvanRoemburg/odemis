@@ -62,9 +62,13 @@ CONFIG_MPPC = {"name": "MPPC", "role": "mppc"}
 CHILDREN_ASM = {"EBeamScanner"   : CONFIG_SCANNER,
                 "MirrorDescanner": CONFIG_DESCANNER,
                 "MPPC"           : CONFIG_MPPC}
-EXTERNAL_STORAGE = {"host"     : "localhost",
-                   "username" : "username",
-                   "password" : "password",
+# EXTERNAL_STORAGE = {"host"     : "localhost",
+#                     "username" : "username",
+#                     "password" : "password",
+#                     "directory": "asm_service"}
+EXTERNAL_STORAGE = {"host"     : "127.0.0.1",
+                   "username" : "ftpuser",
+                   "password" : "tails",
                    "directory": "asm_service"}
 
 
