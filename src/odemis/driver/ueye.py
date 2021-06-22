@@ -1444,3 +1444,7 @@ class UEyeDataFlow(model.DataFlow):
         else:
             logging.debug("Sending unsynchronisation event")
             self._detector.set_trigger(False)
+
+
+if __name__ == '__main__':
+    ccd = Camera("camera", "ccd", device=None)
