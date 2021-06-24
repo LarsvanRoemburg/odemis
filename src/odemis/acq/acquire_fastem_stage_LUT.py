@@ -3,7 +3,7 @@
 """
 Created on 10 February 2021
 
-@author: Sabrina Rossberger
+@author: Sabrina Rossberger, Thera Pals, Wilco Zuidema
 
 
 Copyright © 2021 Sabrina Rossberger, Delmic
@@ -15,6 +15,7 @@ from __future__ import division
 
 import logging
 import sys
+import threading
 import time
 import numpy
 
@@ -52,11 +53,13 @@ def acquire_MegaField(mppc, dataflow, descanner, multibeam, stage, ccd, beamshif
     multibeam.scanOffset.value = (-0.0935/1, 0.0935/1)
     multibeam.scanGain.value = (0.0935/1, -0.0935/1)
 
-
-
     #setting of the descanner
-    offset_x = 0.09876788979391249
-    offset_y = 0.16016329116497904
+    # offset_x = 0.09876788979391249
+    # offset_y = 0.16016329116497904
+    # new values after realignment:
+    offset_x = 0.1586
+    offset_y = 0.2166
+
     descanner.scanOffset.value = (offset_x, offset_y)
     descanner.scanGain.value = (offset_x + 0.0082, offset_y - 0.0082)
     time.sleep(3)
@@ -67,10 +70,23 @@ def acquire_MegaField(mppc, dataflow, descanner, multibeam, stage, ccd, beamshif
     mppc.dataContent.value = "empty"
     mppc.filename.value = time.strftime("testing_megafield_id-%Y-%m-%d-%H-%M-%S")
     multibeam.dwellTime.value = 0.4e-6
+
+    # TODO replace with get call; disadvantage it will be labelled as (0,0), which is not handy for debugging
+    # dataflow.subscribe(on_field_image)
     dataflow.subscribe(image_received)
+    # clear event that is set in the callback
+    # image_received.clear()
     dataflow.next((1001, 1001))
+    # image_received.wait(dwell_time * mppc.cellCompleteResolution.value[0] * mppc.cellCompleteResolution.value[1])
     time.sleep(1)
+    # dataflow.unsubscribe(on_field_image)
     dataflow.unsubscribe(image_received)
+
+    # FIXME dataflow.next() is not blocking. scan_field is supposed to be blocking
+    # FIXME To be sure the settings have been applied to
+    #  the HW, we added the next call, as then it seems to only move the beam to the correct offset value.
+    #  Check why settings not already set on HW in start/subscribe.
+
     ccd_image = ccd.data.get(asap=False)
     spot_coordinates, *_ = FindGridSpots(ccd_image, (8, 8))
     spot_coordinates[:, 1] = ccd_image.shape[1] - spot_coordinates[:, 1]
@@ -107,12 +123,10 @@ def acquire_MegaField(mppc, dataflow, descanner, multibeam, stage, ccd, beamshif
     # mppc.cellDarkOffset.value = tuple(tuple(0 for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
     # mppc.cellDigitalGain.value = tuple(tuple(1 for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
 
-    image_counter = 0  # used to acquire the first field twice due to intensity issues (to be removed)
-    # Note: numbering of offloaded images is incorrect then: image 0 equal image 1
-
     mppc.dataContent.value = "empty"
     mppc.filename.value = time.strftime("testing_megafield_id-%Y-%m-%d-%H-%M-%S")
     dataflow = mppc.data
+    # dataflow.subscribe(on_field_image)
     dataflow.subscribe(image_received)
     time.sleep(3)
 
@@ -133,18 +147,11 @@ def acquire_MegaField(mppc, dataflow, descanner, multibeam, stage, ccd, beamshif
 
     pos = stage.position.value
 
-
-
     for row in range(field_images[1]):  # y axis, move stage on y,
 
         for col in range(field_images[0]):  # x axis, move stage on x
 
             print("col (x): {} row (y): {} stage: {}(this does not mean a lot)".format(col, row, stage.position.value))
-
-            if image_counter < 1:
-                dataflow.next((1000, 1000))  # acquire the first field twice
-                time.sleep(dwell_time * mppc.cellCompleteResolution.value[0] * mppc.cellCompleteResolution.value[1] + 0.5)
-                time.sleep(3)
 
             ####################################################################################
             # Correct for beam shift.
@@ -176,7 +183,7 @@ def acquire_MegaField(mppc, dataflow, descanner, multibeam, stage, ccd, beamshif
                 stage.moveAbs({"y": y_stage_pos[row, col]}).result()  # in meter!
                 time.sleep(0.4)
                 # read new MM position
-                stage_pos_actual = (mm.position.value['x'], mm.position.value['y'])
+                stage_pos_actual = (0, 0)
 
                 # calc difference from theoretical stage pos and MM (actual stage) pos taking the offset into account
                 pos_corr_x = stage_pos_actual[0] - x_stage_pos_mm[row, col]
@@ -214,16 +221,20 @@ def acquire_MegaField(mppc, dataflow, descanner, multibeam, stage, ccd, beamshif
                 ##############################################################################
                 time.sleep(0.5)
 
+            # clear event that is set in the callback
+            # image_received.clear()
             # acquire field
             dataflow.next((col, row))   # acquire the field image (y, x)
+            # TODO fix in driver the waiting time for the first image that is overwritten, the callback does not take this into account here; add some extra time (30s)
+            # image_received.wait(dwell_time * mppc.cellCompleteResolution.value[0] * mppc.cellCompleteResolution.value[1] + 30)
             # #TODO investigate order!! with testcases in wrapper order not checked with filename pattern
-            image_counter += 1
             time.sleep(dwell_time * mppc.cellCompleteResolution.value[0] * mppc.cellCompleteResolution.value[1] + 0.5)
             # wait a bit so the image can be acquired TODO implement proper future for image acquisition (will be done in acq manager)
 
         ##############################################################################
         time.sleep(0.5)
 
+    # dataflow.unsubscribe(on_field_image)
     dataflow.unsubscribe(image_received)
 
     # Move stage back to starting position of the stage
@@ -242,8 +253,20 @@ def acquire_MegaField(mppc, dataflow, descanner, multibeam, stage, ccd, beamshif
 # correct with beam shift (first read, then set as also absolute pos)
 ##############################################################################
 
+# image_received = threading.Event()
 
-def image_received(self, *args):
+
+def on_field_image(df, da):
+    """
+    Subscriber for test cases which counts the number of times it is notified.
+    *args contains the image/data which is received from the subscriber.
+    """
+    print("image received")
+    image_received.set()
+    print("-----------------------")
+
+
+def image_received(df, da):
     """
     Subscriber for test cases which counts the number of times it is notified.
     *args contains the image/data which is received from the subscriber.
@@ -290,12 +313,15 @@ def main(args):
     # debugging: (2,3): expect 3 images in y direction (rows), 2 images in x dir (columns) files 0_0_, 1_0_, 2_0_, 0_1_, 1_1_, 2_1_
 
     try:
+        # clear event that is set in the callback
+        # image_received.clear()
         acquire_MegaField(mppc, dataflow, MirrorDescanner, MultiBeamScanner, stage, ccd, beamshift, mm, field_images,
                           dwell_time)
     except Exception as exp:
         logging.error("%s", exp, exc_info=True)
     finally:
         dataflow.unsubscribe(image_received)
+        time.sleep(30)  # wait sometime; the acquisition was not finished when the beam was already blanked! FIXME!!
         scanner.blanker.value = True  # blank the beam
         # scanner.power.value = False  # Switch off beam
     print("Done")
