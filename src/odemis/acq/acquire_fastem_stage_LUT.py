@@ -62,7 +62,7 @@ def acquire_MegaField(mppc, dataflow, descanner, multibeam, stage, ccd, beamshif
 
     descanner.scanOffset.value = (offset_x, offset_y)
     descanner.scanGain.value = (offset_x + 0.0082, offset_y - 0.0082)
-    time.sleep(3)
+    # time.sleep(3)
 
     #routine to align the spot grid with the MPPC using the mapping of the MPPC to diagnosic camera
     #this part uploads the standard descan offset
@@ -96,7 +96,7 @@ def acquire_MegaField(mppc, dataflow, descanner, multibeam, stage, ccd, beamshif
 
     print(offset_x)
     print(offset_y)
-    time.sleep(3)
+    # time.sleep(3)
 
     #final settings for the acquisition
     multibeam.dwellTime.value = dwell_time
@@ -124,7 +124,7 @@ def acquire_MegaField(mppc, dataflow, descanner, multibeam, stage, ccd, beamshif
     mppc.filename.value = time.strftime("testing_megafield_id-%Y-%m-%d-%H-%M-%S")
     dataflow = mppc.data
     dataflow.subscribe(on_field_image)
-    time.sleep(3)
+    # time.sleep(3)
 
     #here lookup tables of the stage positions are created
     x_stage_pos = - numpy.array([numpy.linspace(0, ((field_images[0] - 1) * 3.195e-6 * 8 * (1 - overlap)), field_images[0])] * field_images[1])
@@ -227,7 +227,7 @@ def acquire_MegaField(mppc, dataflow, descanner, multibeam, stage, ccd, beamshif
             # TODO implement proper future for image acquisition (will be done in acq manager)
 
         ##############################################################################
-        time.sleep(0.5)
+        # time.sleep(0.5)
 
     dataflow.unsubscribe(on_field_image)
 
@@ -306,7 +306,6 @@ def main(args):
         logging.error("%s", exp, exc_info=True)
     finally:
         dataflow.unsubscribe(on_field_image)
-        time.sleep(30)  # wait sometime; the acquisition was not finished when the beam was already blanked! FIXME!!
         scanner.blanker.value = True  # blank the beam
         # scanner.power.value = False  # Switch off beam
     print("Done")
