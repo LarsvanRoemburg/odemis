@@ -57,8 +57,8 @@ def acquire_MegaField(mppc, dataflow, descanner, multibeam, stage, ccd, beamshif
     # offset_x = 0.09876788979391249
     # offset_y = 0.16016329116497904
     # new values after realignment:
-    offset_x = 0.1586
-    offset_y = 0.2166
+    offset_x = 0.20
+    offset_y = 0.28
 
     descanner.scanOffset.value = (offset_x, offset_y)
     descanner.scanGain.value = (offset_x + 0.0082, offset_y - 0.0082)
@@ -84,18 +84,22 @@ def acquire_MegaField(mppc, dataflow, descanner, multibeam, stage, ccd, beamshif
     #  the HW, we added the next call, as then it seems to only move the beam to the correct offset value.
     #  Check why settings not already set on HW in start/subscribe.
 
+    # It looks like with the new implementation the offset is still not uploaded when getting the DC image, which is
+    # used to calculate the correct descan offset (which is visible by dark cell images in the field image and/or
+    # ghosting of structures
+    # time.sleep(30)
+
     ccd_image = ccd.data.get(asap=False)
     spot_coordinates, *_ = FindGridSpots(ccd_image, (8, 8))
     spot_coordinates[:, 1] = ccd_image.shape[1] - spot_coordinates[:, 1]
     shift_descan = numpy.mean(spot_coordinates, axis=0) - mean_spot
     offset_x = offset_x+shift_descan[0] * 0.000196022
-    print(shift_descan*(3.45/10))
     offset_y = offset_y+shift_descan[1] * 0.000196022
+    print("shift descan offset: {}".format(shift_descan*(3.45/10)))
     descanner.scanOffset.value = (offset_x, offset_y)
     descanner.scanGain.value = (offset_x + 0.0082/1, offset_y - 0.0082/1)
 
-    print(offset_x)
-    print(offset_y)
+    print("descan offset x: {}; descan offset y: {}".format(offset_x, offset_y))
     # time.sleep(3)
 
     #final settings for the acquisition
@@ -135,8 +139,8 @@ def acquire_MegaField(mppc, dataflow, descanner, multibeam, stage, ccd, beamshif
     x_stage_pos_rot = numpy.cos(numpy.radians(mpp_angle)) * x_stage_pos + numpy.sin(numpy.radians(mpp_angle)) * y_stage_pos
     y_stage_pos_rot = numpy.cos(numpy.radians(mpp_angle)) * y_stage_pos - numpy.sin(numpy.radians(mpp_angle)) * x_stage_pos
 
-    x_stage_pos_mm = mm.position.value['x'] + x_stage_pos_rot
-    y_stage_pos_mm = mm.position.value['y'] + y_stage_pos_rot
+    # x_stage_pos_mm = mm.position.value['x'] + x_stage_pos_rot
+    # y_stage_pos_mm = mm.position.value['y'] + y_stage_pos_rot
 
     x_stage_pos = x_stage_pos_rot + stage.position.value['x']
     y_stage_pos = y_stage_pos_rot + stage.position.value['y']
@@ -150,20 +154,21 @@ def acquire_MegaField(mppc, dataflow, descanner, multibeam, stage, ccd, beamshif
             print("col (x): {} row (y): {} stage: {}(this does not mean a lot)".format(col, row, stage.position.value))
 
             ####################################################################################
-            # Correct for beam shift.
-            if col > -1 or row > -1:
-                ccd_image = ccd.data.get(asap=False)
-                spot_coordinates, *_ = FindGridSpots(ccd_image, (8, 8))
-                # Transfer to a coordinate system with the origin in the bottom left.
-                spot_coordinates[:, 1] = ccd_image.shape[1] - spot_coordinates[:, 1]
-                print("spot_coordinates position: {}".format(numpy.mean(spot_coordinates, axis=0)))
-                shift = numpy.mean(spot_coordinates, axis=0) - mean_spot
-                # Compensate for shift with dc beam shift
-                # convert shift from pixels to um
-                shift_um = shift * 3.45e-6 / 40  # pixelsize ueye cam and 40x magnification
-                print("beam shift required due to stage magnetic field (um): {}".format(shift_um))
-                cur_beam_shift_pos = numpy.array(beamshift.shift.value)
-                beamshift.shift.value = (shift_um + cur_beam_shift_pos)
+            # Correct for paramagnetic field of the stage using the beam shift.
+            # if col > 0 or row > 0:  # skip first image
+            #     ccd_image = ccd.data.get(asap=False)
+            #     spot_coordinates, *_ = FindGridSpots(ccd_image, (8, 8))
+            #     # Transfer to a coordinate system with the origin in the bottom left.
+            #     spot_coordinates[:, 1] = ccd_image.shape[1] - spot_coordinates[:, 1]
+            #     print("spot_coordinates position: {}".format(numpy.mean(spot_coordinates, axis=0)))
+            #     shift = numpy.mean(spot_coordinates, axis=0) - mean_spot
+            #     # Compensate for shift with dc beam shift
+            #     # convert shift from pixels to um
+            #     shift_um = shift * 3.45e-6 / 40  # pixelsize ueye cam and 40x magnification
+            #     print("beam shift required due to stage magnetic field (um): {}".format(shift_um))
+            #     cur_beam_shift_pos = numpy.array(beamshift.shift.value)
+            #     beamshift.shift.value = (shift_um + cur_beam_shift_pos)
+            #     print("current beam shift um: {}".format(beamshift.shift.value))
 
             ##############################################################################
             ##stage move with mm correction ############################################################################
@@ -177,14 +182,14 @@ def acquire_MegaField(mppc, dataflow, descanner, multibeam, stage, ccd, beamshif
             if col > 0 or row > 0:
                 stage.moveAbs({"x": x_stage_pos[row, col]}).result()  # in meter!
                 stage.moveAbs({"y": y_stage_pos[row, col]}).result()  # in meter!
-                time.sleep(0.4)
-                # read new MM position
-                stage_pos_actual = (0, 0)
+                # time.sleep(0.5)
+            #     # read new MM position
+            #     stage_pos_actual = (0, 0)
 
                 # calc difference from theoretical stage pos and MM (actual stage) pos taking the offset into account
-                pos_corr_x = stage_pos_actual[0] - x_stage_pos_mm[row, col]
-                pos_corr_y = stage_pos_actual[1] - y_stage_pos_mm[row, col]
-                tries = 0
+                # pos_corr_x = stage_pos_actual[0] - x_stage_pos_mm[row, col]
+                # pos_corr_y = stage_pos_actual[1] - y_stage_pos_mm[row, col]
+                # tries = 0
                 # while numpy.abs(pos_corr_x) > 700e-9 or numpy.abs(pos_corr_y) > 700e-9:
                 #     stage.moveAbs({"x": x_stage_pos[row, col]+10e-6}).result()  # in meter!
                 #     time.sleep(0.4)
@@ -203,19 +208,19 @@ def acquire_MegaField(mppc, dataflow, descanner, multibeam, stage, ccd, beamshif
                 #         print("stage is not complying with our orders")
                 #         break
 
-                print('the position correction required is x:%e y:%e' % (pos_corr_x, pos_corr_y))
-                # correct with beam shift (first read, then set as also absolute pos)
-                beamshift_pos_curr = beamshift.shift.value
-                if numpy.abs(beamshift_pos_curr[0] + pos_corr_x) < 0.041e-3 or numpy.abs(beamshift_pos_curr[1] + pos_corr_y) < 0.041e-3:
-                    print()
-                    # beamshift.shift.value = (beamshift_pos_curr[0] + pos_corr_x, beamshift_pos_curr[1] + pos_corr_y)
-                else:
-                    print("The beam shift is out of range, the field cannot be aligned with beam shift")
-
-                print("current beam shift um: {}".format(beamshift.shift.value))
-
-                ##############################################################################
-                time.sleep(0.5)
+                # print('the position correction required is x:%e y:%e' % (pos_corr_x, pos_corr_y))
+                # # correct with beam shift (first read, then set as also absolute pos)
+                # beamshift_pos_curr = beamshift.shift.value
+                # if numpy.abs(beamshift_pos_curr[0] + pos_corr_x) < 0.041e-3 or numpy.abs(beamshift_pos_curr[1] + pos_corr_y) < 0.041e-3:
+                #     print()
+                #     # beamshift.shift.value = (beamshift_pos_curr[0] + pos_corr_x, beamshift_pos_curr[1] + pos_corr_y)
+                # else:
+                #     print("The beam shift is out of range, the field cannot be aligned with beam shift")
+                #
+                # print("current beam shift um: {}".format(beamshift.shift.value))
+                #
+                # ##############################################################################
+                # time.sleep(0.5)
 
             # clear event that is set in the callback
             image_received.clear()
@@ -292,8 +297,8 @@ def main(args):
 
     time.sleep(2)  # wait a bit
 
-    field_images = (1, 1)   # (x, y) Note: x (horizontal) = col, y (vertical) = row
-    dwell_time = 2e-6
+    field_images = (1, 2)   # (x, y) Note: x (horizontal) = col, y (vertical) = row
+    dwell_time = 10e-6
     # debugging: (1,3): expect 3 images in y direction (rows), files 0_0_, 1_0_, 2_0_
     # debugging: (2,3): expect 3 images in y direction (rows), 2 images in x dir (columns) files 0_0_, 1_0_, 2_0_, 0_1_, 1_1_, 2_1_
 
