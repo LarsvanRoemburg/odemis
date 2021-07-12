@@ -27,26 +27,6 @@ std_dark_gain = False
 mean_spot = (759, 555)  # in pixels; (65.2, 92.6)um  the location of the MPPC array mapped to the diagnostic camera
 
 
-def set_overscan_parameters_from_csv(mppc, overscan_csv_path):
-
-    """
-    Sets the overscan parameters by the provided csv file which contains the overscan paramters in x and y direction
-    for a full field image. (64 * 2 parameters, first 8 values are the first row, for each cell x, y)
-    :param  asm (AcquisitionServer object): AcquisitionServer object connecting to the asm API.
-    :param digital_gain_csv_path (string): File path overscan parameters csv file which will be set on the technolution
-    wrapper
-    """
-
-    #mppc = [child for child in asm.children.value if child.name == 'MPPC'][0]
-    rows = mppc.shape[0]  # Usually 8
-    columns = mppc.shape[1]  # Usually 8
-    overscan_params = mppc.cellTranslation
-    overscan_parameters = numpy.loadtxt(overscan_csv_path, delimiter=",")
-    # Convert into 8*8*2 tuple of ints (python ints not numpy.ints) and set values
-    convert2int = lambda xy: (int(xy[0]), int(xy[1]))
-    overscan_params.value = tuple(tuple(map(convert2int, overscan_parameters[i*columns:i*columns+columns, :])) for i in range(0, rows))
-
-
 def mppc2mp(ccd, multibeam, descanner, mppc, dataflow, beamshift):
 
     # setting of the scanner
@@ -220,7 +200,6 @@ def settings_megafield(multibeam, descanner, mppc, dwell_time):
     # debug
     # mppc.cellTranslation.value = tuple(tuple((0, 0) for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
 
-    # set_overscan_parameters_from_csv(mppc, "/home/fast-em/Desktop/over_scan_params/overscan_parameters.csv") #comment for FIELD CORRECIONS
 
     # current overscan parameters
     mppc.cellTranslation.value = (((0, 0), (4, 2), (13, 11), (17, 16), (21, 23), (26, 28), (33, 33), (40, 39)),
