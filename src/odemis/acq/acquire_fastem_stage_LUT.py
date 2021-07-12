@@ -27,30 +27,26 @@ std_dark_gain = False
 mean_spot = (759, 555)  # in pixels; (65.2, 92.6)um  the location of the MPPC array mapped to the diagnostic camera
 
 
-def mppc2mp(ccd, multibeam, descanner, mppc, dataflow, beamshift):
+def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
+
+    # routine to align the spot grid with the MPPC using the mapping of the MPPC to diagnostic camera
 
     # setting of the scanner
     multibeam.scanOffset.value = (-0.0935 / 1, 0.0935 / 1)
     multibeam.scanGain.value = (0.0935 / 1, -0.0935 / 1)
 
     # setting of the descanner
-    # offset_x = 0.09876788979391249
-    # offset_y = 0.16016329116497904
     # good offset positions
     good_offset_x = 0.1586
     good_offset_y = 0.2166
-    # new values after realignment:
+    # bad values for debug:
     offset_x = 0.20
     offset_y = 0.28
     print("inital descan offset x: {}; inital descan offset y: {}".format(offset_x, offset_y))
 
     descanner.scanOffset.value = (offset_x, offset_y)
     descanner.scanGain.value = (offset_x + 0.0082, offset_y - 0.0082)
-    # time.sleep(3)
 
-    # routine to align the spot grid with the MPPC using the mapping of the MPPC to diagnosic camera
-    # this part uploads the standard descan offset
-    mppc.dataContent.value = "empty"
     mppc.filename.value = time.strftime("testing_megafield_id-%Y-%m-%d-%H-%M-%S")
     multibeam.dwellTime.value = 0.4e-6
 
@@ -60,7 +56,6 @@ def mppc2mp(ccd, multibeam, descanner, mppc, dataflow, beamshift):
     image_received.clear()
     dataflow.next((1001, 1001))  # generate data,
     logging.debug("requested calibration image acquired via ASM")
-    # image_received.wait(2e-6 * mppc.cellCompleteResolution.value[0] * mppc.cellCompleteResolution.value[1] + 1)
     if not image_received.wait(
             multibeam.dwellTime.value * mppc.cellCompleteResolution.value[0] * mppc.cellCompleteResolution.value[
                 1] + 1):
@@ -200,7 +195,6 @@ def settings_megafield(multibeam, descanner, mppc, dwell_time):
     # debug
     # mppc.cellTranslation.value = tuple(tuple((0, 0) for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
 
-
     # current overscan parameters
     mppc.cellTranslation.value = (((0, 0), (4, 2), (13, 11), (17, 16), (21, 23), (26, 28), (33, 33), (40, 39)),
                                   ((7, 0), (11, 5), (19, 12), (27, 21), (30, 26), (34, 31), (42, 36), (50, 44)),
@@ -212,13 +206,7 @@ def settings_megafield(multibeam, descanner, mppc, dwell_time):
                                   ((65, 1), (62, 13), (63, 20), (69, 23), (80, 30), (83, 33), (87, 35), (92, 38)))
 
 
-def acquire_megafield(ccd, stage, multibeam, descanner, mppc, dataflow, beamshift, mm, field_images, dwell_time):
-
-    # reset beamshift
-    beamshift.shift.value = (0, 0)
-
-    # align detector with scanner
-    mppc2mp(ccd, multibeam, descanner, mppc, dataflow, beamshift)
+def acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, mm, field_images, dwell_time):
 
     # adjust settings for megafield image acquisition
     settings_megafield(multibeam, descanner, mppc, dwell_time)
@@ -277,7 +265,8 @@ def acquire_megafield(ccd, stage, multibeam, descanner, mppc, dataflow, beamshif
             # request next field
             dataflow.next((col, row))   # acquire the field image (y, x)
             # Note: 1 or 2 additional seconds were not enough
-            if not image_received.wait(dwell_time * mppc.cellCompleteResolution.value[0] * mppc.cellCompleteResolution.value[1] + 5):
+            # TODO these extra seconds should be independent of the dwell_time, like flyback etc.
+            if not image_received.wait(dwell_time * mppc.cellCompleteResolution.value[0] * mppc.cellCompleteResolution.value[1] + 60):
                 # wait returns the current status; if status not True then no data received by callback function and
                 # event was not set to true, but False (timeout) -> raise error
                 raise TimeoutError("Did not receive field image in time! Timed out during field number row %s "
@@ -330,10 +319,12 @@ def main(args):
     scanner.horizontalFoV.value = 2.2e-05  # corresponds to mag = 5000x in quad view
     scanner.multiBeamMode.value = True  # True selects multibeam mode
     scanner.immersion.value = True  # put the microscope in immersion mode if not already
-    scanner.external.value = True  # Put microscope in external mode
+    scanner.external.value = True  # put microscope in external mode
 
     # Provide coordinate transform for beam shift.
     beamshift.updateMetadata({model.MD_CALIB: scanner.beamShiftTransformationMatrix.value})
+    # reset beamshift
+    beamshift.shift.value = (0, 0)
 
     # adjust megafield size
     field_images = (1, 1)   # (x, y) Note: x (horizontal) = col, y (vertical) = row
@@ -345,7 +336,10 @@ def main(args):
     try:
         # clear event that is set in the callback
         image_received.clear()
-        acquire_megafield(ccd, stage, multibeam, descanner, mppc, dataflow, beamshift, mm, field_images, dwell_time)
+        # align detector with scanner
+        mppc2mp(ccd, multibeam, descanner, mppc, dataflow)
+        # acquire the image data
+        acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, mm, field_images, dwell_time)
     except Exception as exp:
         logging.error("%s", exp, exc_info=True)
     finally:
