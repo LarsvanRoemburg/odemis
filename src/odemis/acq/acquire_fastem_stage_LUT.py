@@ -23,7 +23,7 @@ from odemis import model
 from odemis.acq.align.spot import FindGridSpots
 from odemis.util.driver import get_backend_status, BACKEND_RUNNING
 
-std_dark_gain = False
+std_dark_gain = True
 mean_spot = (759, 555)  # in pixels; (65.2, 92.6)um  the location of the MPPC array mapped to the diagnostic camera
 
 
@@ -66,7 +66,7 @@ def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
     logging.debug("received calibration image from ASM")
     dataflow.unsubscribe(on_field_image)
 
-    ccd_image = ccd.data.get(asap=False)
+    ccd_image = ccd.data.get(asap=False)  # asap=False: wait until new image is acquired (don't read from buffer)
     logging.debug("received diagnostic camera image")
     spot_coordinates, *_ = FindGridSpots(ccd_image, (8, 8))
     spot_coordinates[:, 1] = ccd_image.shape[1] - spot_coordinates[:, 1]
@@ -84,7 +84,7 @@ def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
 def correct_stage_magnetic_field(ccd, beamshift):
 
     logging.debug("Perform paramagnetic field correction.")
-    ccd_image = ccd.data.get(asap=False)
+    ccd_image = ccd.data.get(asap=False)  # asap=False: wait until new image is acquired (don't read from buffer)
     spot_coordinates, *_ = FindGridSpots(ccd_image, (8, 8))
     # Transfer to a coordinate system with the origin in the bottom left.
     spot_coordinates[:, 1] = ccd_image.shape[1] - spot_coordinates[:, 1]
@@ -189,8 +189,8 @@ def settings_megafield(multibeam, descanner, mppc, dwell_time):
 
     # TODO values should be set in calibration (field corrections)
     # debug
-    mppc.cellDarkOffset.value = tuple(tuple(0 for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
-    mppc.cellDigitalGain.value = tuple(tuple(1 for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
+    # mppc.cellDarkOffset.value = tuple(tuple(0 for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
+    # mppc.cellDigitalGain.value = tuple(tuple(1 for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
 
     # debug
     # mppc.cellTranslation.value = tuple(tuple((0, 0) for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
@@ -218,7 +218,7 @@ def acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, mm, fie
     y_stage_pos = + numpy.array([numpy.linspace(0, ((field_images[1] - 1) * 3.195e-6 * 8 * (1 - overlap)), field_images[1])] * field_images[0]).transpose()
 
     # rotate the stage positions
-    # TODO this should be handled by the component; is this the stage to mp calibration?
+    # TODO this should be handled by the component; is this the stage to mp calibration? use stage-scan????
     mpp_angle = 1
     x_stage_pos_rot = numpy.cos(numpy.radians(mpp_angle)) * x_stage_pos + numpy.sin(numpy.radians(mpp_angle)) * y_stage_pos
     y_stage_pos_rot = numpy.cos(numpy.radians(mpp_angle)) * y_stage_pos - numpy.sin(numpy.radians(mpp_angle)) * x_stage_pos
@@ -305,7 +305,7 @@ def main(args):
     descanner = model.getComponent(role="descanner")
     multibeam = model.getComponent(role="multibeam")
     scanner = model.getComponent(role="mb-scanner")
-    stage = model.getComponent(role="stage")
+    stage = model.getComponent(role="stage")  # TODO use stage-scan!!???
     mm = model.getComponent(role="stage-pos")
     beamshift = model.getComponent(role="ebeam-shift")
 
