@@ -23,7 +23,7 @@ from odemis import model
 from odemis.acq.align.spot import FindGridSpots
 from odemis.util.driver import get_backend_status, BACKEND_RUNNING
 
-std_dark_gain = True
+std_dark_gain = False
 mean_spot = (759, 555)  # in pixels; (65.2, 92.6)um  the location of the MPPC array mapped to the diagnostic camera
 
 
