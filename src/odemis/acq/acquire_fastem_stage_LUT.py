@@ -23,6 +23,12 @@ from odemis import model
 from odemis.acq.align.spot import FindGridSpots
 from odemis.util.driver import get_backend_status, BACKEND_RUNNING
 
+from datetime import datetime
+
+import os
+
+from odemis import dataio
+
 std_dark_gain = False
 MEAN_SPOT = (700, 510)  # in pixels on DC; (700 * 3.45, 510 * 3.45) um with 3.45um = pixelsize of DC
 
@@ -54,6 +60,22 @@ def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
     mppc.filename.value = time.strftime("testing_megafield_id-%Y-%m-%d-%H-%M-%S")
     multibeam.dwellTime.value = 0.4e-6
 
+    # create folder to store calibration images
+    dir_name = "mppc-to-mp-translation_acq"
+
+    user_path = os.path.expanduser("~")
+    path_images = os.path.join(user_path, "development", "fastem-calibrations", "images")
+    os.makedirs(path_images, exist_ok=True)  # check if directory already existing, if not create it
+
+    # create directory with name as specified in parameter dir_name
+    path_calib = os.path.join(path_images, dir_name)
+    os.makedirs(path_calib, exist_ok=True)  # check if directory already existing, if not create it
+
+    # create directory for saving the calibration images with date and timestamp as name
+    path = os.path.join(path_calib, datetime.now().strftime("%Y%m%d-%H%M%S"))
+    os.makedirs(path)
+
+    # upload the settings to the HW via the ASM
     # TODO replace with get call; disadvantage it will be labelled as (0,0), which is not handy for debugging
     dataflow.subscribe(on_field_image)  # no event set yet; only when receiving data
     # clear event that is set in the callback
@@ -61,21 +83,37 @@ def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
     dataflow.next((1001, 1001))  # generate data,
     logging.debug("requested calibration image acquired via ASM")
     if not image_received.wait(
-            multibeam.dwellTime.value * mppc.cellCompleteResolution.value[0] * mppc.cellCompleteResolution.value[
-                1] + 1):
+            multibeam.dwellTime.value
+            * mppc.cellCompleteResolution.value[0]
+            * mppc.cellCompleteResolution.value[1]
+            + 1):
         # wait until the current status is returned; if status not True (no data received by callback function and
         # thus event not set to true, but False (timeout) -> raise error
+        # wait until the current status is returned; if status not True (no data received by callback function and
+        # thus event not set to true), but False (timeout) -> raise error
+        dataflow.unsubscribe(on_field_image)
         raise TimeoutError("Calibration timed out")
     # blocking; callback function receive data; event is set to True; wait until flag is true
     logging.debug("received calibration image from ASM")
     dataflow.unsubscribe(on_field_image)
 
     ccd_image = ccd.data.get(asap=False)  # asap=False: wait until new image is acquired (don't read from buffer)
+
     logging.debug("received diagnostic camera image")
+
+    # save the calibration image
+    file_name = "dc_image_before_alignment_acq.tiff"
+    file_path = os.path.join(path, file_name)
+    dataio.tiff.export(file_path, ccd_image)
+
+    # calculate the difference in the multiprobe position on the diagnostic camera image compared to the "good"
+    # (mean_spot) position, where the mp signal is mapped correctly onto the mppc detector
+    # TODO: replace (8,8) with shape attribute
     spot_coordinates, *_ = FindGridSpots(ccd_image, (8, 8))
     spot_coordinates[:, 1] = ccd_image.shape[1] - spot_coordinates[:, 1]
     shift_descan = numpy.mean(spot_coordinates, axis=0) - MEAN_SPOT
     print("correction for descan offset: {}".format(shift_descan * (3.45 / 10)))
+
     offset_x = offset_x + shift_descan[0] * 0.000196022
     offset_y = offset_y + shift_descan[1] * 0.000196022
     descanner.scanOffset.value = (offset_x, offset_y)
@@ -83,6 +121,17 @@ def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
 
     print("expected descan offset x: {}; calibrated descan offset y: {}".format(good_offset_x, good_offset_y))
     print("calibrated descan offset x: {}; calibrated descan offset y: {}".format(offset_x, offset_y))
+
+    # upload the calculated offsets to the ASM
+    dataflow.get(dataContent="empty")
+
+    # save the calibration image after applying the new settings
+    ccd_image = ccd.data.get(asap=False)  # asap=False: wait until new image is acquired (don't read from buffer)
+
+    # save the calibration image
+    file_name = "dc_image_after_alignment_acq.tiff"
+    file_path = os.path.join(path, file_name)
+    dataio.tiff.export(file_path, ccd_image)
 
 
 def correct_stage_magnetic_field(ccd, beamshift):
