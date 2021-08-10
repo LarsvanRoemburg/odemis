@@ -24,7 +24,7 @@ from odemis.acq.align.spot import FindGridSpots
 from odemis.util.driver import get_backend_status, BACKEND_RUNNING
 
 std_dark_gain = False
-mean_spot = (759, 555)  # in pixels; (65.2, 92.6)um  the location of the MPPC array mapped to the diagnostic camera
+MEAN_SPOT = (700, 510)  # in pixels on DC; (700 * 3.45, 510 * 3.45) um with 3.45um = pixelsize of DC
 
 
 def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
@@ -37,11 +37,11 @@ def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
 
     # setting of the descanner
     # good offset positions
-    good_offset_x = 0.1586
-    good_offset_y = 0.2166
+    good_offset_x = 0.032043  # a.u.
+    good_offset_y = 0.053406
     # bad values for debug:
-    offset_x = 0.20
-    offset_y = 0.28
+    offset_x = 0.052043
+    offset_y = 0.073406
     print("inital descan offset x: {}; inital descan offset y: {}".format(offset_x, offset_y))
 
     descanner.scanOffset.value = (offset_x, offset_y)
@@ -70,7 +70,7 @@ def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
     logging.debug("received diagnostic camera image")
     spot_coordinates, *_ = FindGridSpots(ccd_image, (8, 8))
     spot_coordinates[:, 1] = ccd_image.shape[1] - spot_coordinates[:, 1]
-    shift_descan = numpy.mean(spot_coordinates, axis=0) - mean_spot
+    shift_descan = numpy.mean(spot_coordinates, axis=0) - MEAN_SPOT
     print("correction for descan offset: {}".format(shift_descan * (3.45 / 10)))
     offset_x = offset_x + shift_descan[0] * 0.000196022
     offset_y = offset_y + shift_descan[1] * 0.000196022
