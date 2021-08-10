@@ -14,20 +14,18 @@ Copyright © 2021 Sabrina Rossberger, Delmic
 from __future__ import division
 
 import logging
+import os
 import sys
 import threading
 import time
+from datetime import datetime
+
 import numpy
 
+from odemis import dataio
 from odemis import model
 from odemis.acq.align.spot import FindGridSpots
 from odemis.util.driver import get_backend_status, BACKEND_RUNNING
-
-from datetime import datetime
-
-import os
-
-from odemis import dataio
 
 std_dark_gain = False
 MEAN_SPOT = (700, 510)  # in pixels on DC; (700 * 3.45, 510 * 3.45) um with 3.45um = pixelsize of DC
