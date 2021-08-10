@@ -31,6 +31,10 @@ def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
 
     # routine to align the spot grid with the MPPC using the mapping of the MPPC to diagnostic camera
 
+    mppc.cellTranslation.value = tuple(tuple((0, 0) for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
+    mppc.cellDarkOffset.value = tuple(tuple(0 for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
+    mppc.cellDigitalGain.value = tuple(tuple(1 for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
+
     # setting of the scanner
     multibeam.scanOffset.value = (-0.0935 / 1, 0.0935 / 1)
     multibeam.scanGain.value = (0.0935 / 1, -0.0935 / 1)
@@ -89,7 +93,7 @@ def correct_stage_magnetic_field(ccd, beamshift):
     # Transfer to a coordinate system with the origin in the bottom left.
     spot_coordinates[:, 1] = ccd_image.shape[1] - spot_coordinates[:, 1]
     print("spot_coordinates position: {}".format(numpy.mean(spot_coordinates, axis=0)))
-    shift = numpy.mean(spot_coordinates, axis=0) - mean_spot
+    shift = numpy.mean(spot_coordinates, axis=0) - MEAN_SPOT
     # Compensate for shift with dc beam shift
     # convert shift from pixels to um
     shift_um = shift * 3.45e-6 / 40  # pixelsize ueye cam and 40x magnification
