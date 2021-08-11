@@ -27,7 +27,7 @@ from odemis import model
 from odemis.acq.align.spot import FindGridSpots
 from odemis.util.driver import get_backend_status, BACKEND_RUNNING
 
-std_dark_gain = False
+std_dark_gain = True
 MEAN_SPOT = (700, 510)  # in pixels on DC; (700 * 3.45, 510 * 3.45) um with 3.45um = pixelsize of DC
 
 
