@@ -265,17 +265,29 @@ def acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, mm, fie
     # calculate lookup table for stage positions
     overlap = 0.075  # the fractional overlap
     # TODO positions should be calculated on the fly and not via lookuptable
+    # create grid of field positions in x and y in meter
+    # negative x indices as negative move with stage-bare moves feature to the left and thus moved right on sample
+    # (2nd field should be right of first field)
+    # transpose y as it is column vecto TODO why?
+    # TODO why is there a multiplication at the end with the opposite axis?
+    # TODO do we rotate the stage positions in the mp coordinate system into the stage-bare system -confirm!
     x_stage_pos = - numpy.array([numpy.linspace(0, ((field_images[0] - 1) * 3.195e-6 * 8 * (1 - overlap)), field_images[0])] * field_images[1])
     y_stage_pos = + numpy.array([numpy.linspace(0, ((field_images[1] - 1) * 3.195e-6 * 8 * (1 - overlap)), field_images[1])] * field_images[0]).transpose()
 
-    # rotate the stage positions
-    # TODO this should be handled by the component; is this the stage to mp calibration? use stage-scan????
-    mpp_angle = 1
-    x_stage_pos_rot = numpy.cos(numpy.radians(mpp_angle)) * x_stage_pos + numpy.sin(numpy.radians(mpp_angle)) * y_stage_pos
-    y_stage_pos_rot = numpy.cos(numpy.radians(mpp_angle)) * y_stage_pos - numpy.sin(numpy.radians(mpp_angle)) * x_stage_pos
+    # # rotate the field positions in the multiprobe coordinate system into the stage-bare coordinate system
+    # # Note: rotation of axes needs the inverse rotation matrix (left-handed)
+    # # TODO this should be handled by the component; is this the stage to mp calibration? use stage-scan????
+    # mpp_angle = 1
+    # x_stage_pos_rot = numpy.cos(numpy.radians(mpp_angle)) * x_stage_pos + numpy.sin(numpy.radians(mpp_angle)) * y_stage_pos
+    # y_stage_pos_rot = numpy.cos(numpy.radians(mpp_angle)) * y_stage_pos - numpy.sin(numpy.radians(mpp_angle)) * x_stage_pos
+    #
+    # # add an offset (aka current stage-bare positions) to the field positions in the stage-bare coordinate system
+    # x_stage_pos = x_stage_pos_rot + stage.position.value['x']
+    # y_stage_pos = y_stage_pos_rot + stage.position.value['y']
 
-    x_stage_pos = x_stage_pos_rot + stage.position.value['x']
-    y_stage_pos = y_stage_pos_rot + stage.position.value['y']
+    # add an offset (aka current stage-scan positions) to the field positions in the stage-scan coordinate system
+    x_stage_pos = x_stage_pos + stage.position.value['x']
+    y_stage_pos = y_stage_pos + stage.position.value['y']
 
     # save start position of megafield
     start_pos = stage.position.value
@@ -356,7 +368,8 @@ def main(args):
     descanner = model.getComponent(role="descanner")
     multibeam = model.getComponent(role="multibeam")
     scanner = model.getComponent(role="e-beam")
-    stage = model.getComponent(role="stage-bare")  # TODO use stage-scan!!???
+    # stage = model.getComponent(role="stage-bare")  # TODO use stage-scan!!???
+    stage = model.getComponent(role="stage-scan")
     mm = model.getComponent(role="stage-pos")
     beamshift = model.getComponent(role="ebeam-shift")
 
