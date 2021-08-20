@@ -355,8 +355,8 @@ def main(args):
     dataflow = mppc.data
     descanner = model.getComponent(role="descanner")
     multibeam = model.getComponent(role="multibeam")
-    scanner = model.getComponent(role="mb-scanner")
-    stage = model.getComponent(role="stage")  # TODO use stage-scan!!???
+    scanner = model.getComponent(role="e-beam")
+    stage = model.getComponent(role="stage-bare")  # TODO use stage-scan!!???
     mm = model.getComponent(role="stage-pos")
     beamshift = model.getComponent(role="ebeam-shift")
 
