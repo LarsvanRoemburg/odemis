@@ -144,13 +144,22 @@ class FastEMROA(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        if cls.backend_was_running:
-            return
-        test.stop_backend()
+        # if cls.backend_was_running:
+        #     return
+        # test.stop_backend()
+        pass
 
     def setUp(self):
-        if self.backend_was_running:
-            self.skipTest("Running backend found")
+        # get the hardware components
+        self.microscope = model.getMicroscope()
+        self.asm = model.getComponent(role="asm")
+        self.mppc = model.getComponent(role="mppc")
+        self.multibeam = model.getComponent(role="multibeam")
+        self.descanner = model.getComponent(role="descanner")
+        self.stage = model.getComponent(role="stage")  # TODO replace with stage-scan when ROA conversion method available
+        self.stage.reference({"x", "y"}).result()
+        # if self.backend_was_running:
+        #     self.skipTest("Running backend found")
 
         self.descanner.physicalFlybackTime = 250e-6  # TODO why is this necessary??
 
@@ -307,13 +316,22 @@ class TestFastEMAcquisition(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        if cls.backend_was_running:
-            return
-        test.stop_backend()
+        # if cls.backend_was_running:
+        #     return
+        # test.stop_backend()
+        pass
 
     def setUp(self):
-        if self.backend_was_running:
-            self.skipTest("Running backend found")
+        # if self.backend_was_running:
+        #     self.skipTest("Running backend found")
+
+        # get the hardware components
+        self.asm = model.getComponent(role="asm")
+        self.mppc = model.getComponent(role="mppc")
+        self.multibeam = model.getComponent(role="multibeam")
+        self.descanner = model.getComponent(role="descanner")
+        self.stage = model.getComponent(role="stage")  # TODO replace with stage-scan when ROA conversion method available
+        self.stage.reference({"x", "y"}).result()
 
     def test_acquire_ROA(self):
         """Acquire a small mega field image."""
