@@ -24,6 +24,8 @@ Odemis. If not, see http://www.gnu.org/licenses/.
 from __future__ import division
 
 import math
+import os
+
 import numpy
 import base64
 import json
@@ -330,11 +332,11 @@ class AcquisitionServer(model.HwComponent):
         :param storage_dir (string): path to the mega field.
         :return (bool): True if mega field exists.
         """
-        ASM_FILE_ILLEGAL_CHARS = r'[^a-z0-9_()-]'
+        ASM_FILE_ILLEGAL_CHARS = r'[^a-z0-9_()-]'  # FIXME should be also capital letters according to api
         ASM_PATH_ILLEGAL_CHARS = r'[^A-Za-z0-9/_()-]'
         if re.search(ASM_PATH_ILLEGAL_CHARS, storage_dir):
             logging.error("The specified storage directory contains invalid characters, cannot check if mega field "
-                          "exists (only the characters '%s' are allowed)." % ASM_FILE_ILLEGAL_CHARS[2:-1])
+                          "exists (only the characters '%s' are allowed)." % ASM_PATH_ILLEGAL_CHARS[2:-1])
             return False
 
         if re.search(ASM_FILE_ILLEGAL_CHARS, mega_field_id):
@@ -1009,7 +1011,8 @@ class MPPC(model.Detector):
         self._descanner = self.parent._mirror_descanner
 
         self._shape = MPPC.SHAPE
-        self.filename = model.StringVA("unnamed_acquisition", setter=self._setFilename)
+        self.filename = model.StringVA("unnamed_acquisition", setter=self._setFilename)  # FIXME is actually folder or megafield id
+        self.subdirectory = model.StringVA("", setter=self._setSubdirectory)  # optional subdirectories for storage
         self.dataContent = model.StringEnumerated('empty', DATA_CONTENT_TO_ASM.keys())
         self.acqDelay = model.FloatContinuous(0.0, range=(0, 200e-6), unit='s', setter=self._setAcqDelay)
         self.overVoltage = model.FloatContinuous(1.5, range=(0, 5), unit='V')
@@ -1085,10 +1088,12 @@ class MPPC(model.Detector):
         X_descan_setpoints = self._descanner.getXAcqSetpoints()
         Y_descan_setpoints = self._descanner.getYAcqSetpoints()
 
+        storage_directory = os.path.join(urlparse(self.parent.externalStorageURL.value).path, self.subdirectory.value)
+
         megafield_metadata = \
             MegaFieldMetaData(
                     mega_field_id=self.filename.value,
-                    storage_directory=urlparse(self.parent.externalStorageURL.value).path,
+                    storage_directory=storage_directory,
                     custom_data="No_custom_data",
                     stage_position_x=float(stage_position[0]),
                     stage_position_y=float(stage_position[1]),
@@ -1453,12 +1458,26 @@ class MPPC(model.Detector):
         :param file_name: (str) The requested filename for the image data to be acquired.
         :return: (str) The set filename for the image data to be acquired.
         """
-        ASM_FILE_CHARS = r'[^a-z0-9_()-]'
+        ASM_FILE_CHARS = r'[^A-Za-z0-9_()-]'
         if re.search(ASM_FILE_CHARS, file_name):
-            raise ValueError("Filename contains invalid characters. Only the following characters are allowed: "
-                             "'%s'. Please choose a new filename." % ASM_FILE_CHARS[2:-1])
+            raise ValueError("Filename %s contains invalid characters. Only the following characters are allowed: "
+                             "'%s'." % (file_name, ASM_FILE_CHARS[2:-1]))
         else:
             return file_name
+
+    def _setSubdirectory(self, sub_directories):
+        """
+        Sets the requested subdirectories where the image data should be stored on the external storage. Check if
+        path complies with the set of allowed characters.
+        :param sub_directories: (str) The sub-directories where the image data should be stored on the external storage.
+        :return: (str) The new name of the sub-directories where the acquired image data will be stored.
+        """
+        ASM_PATH_CHARS = r'[^A-Za-z0-9/_()-]'
+        if re.search(ASM_PATH_CHARS, sub_directories):
+            raise ValueError("Subdirectory %s contains invalid characters. Only the following characters are allowed: "
+                             "'%s'." % (sub_directories, ASM_PATH_CHARS[2:-1]))
+        else:
+            return sub_directories
 
     def _setCellTranslation(self, cellTranslation):
         """
