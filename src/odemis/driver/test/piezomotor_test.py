@@ -96,7 +96,7 @@ class TestPMD401OpenLoop(unittest.TestCase):
         self.stage.moveRel({'x': 0.01})
         self.stage.moveRel({'x': -0.01})
         self.stage.moveAbs({'x': 0.01})
-        f = self.stage.moveAbs({'x': 0})
+        f = self.stage.moveAbs({'x': 0.2})
         f.result()
         self.assertTrue(f.done())
 

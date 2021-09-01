@@ -1125,6 +1125,7 @@ class PMDSimulator(object):
 
     def _do_move(self):
         self.is_moving = True
-        time.sleep(1)
+        # I believe it's only a problem of the simulator. The moves always take 1s, no matter how far, but the timeout actually expects the duration of an actual move
+        time.sleep(0.1)
         self.current_pos = copy.deepcopy(self.target_pos)
         self.is_moving = False
