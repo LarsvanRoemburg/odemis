@@ -1399,7 +1399,7 @@ class FastEMAcquiController(object):
         # <External storage>/<date>/<project name>/<roa name>
         # TODO: display proper path to external storage (if mounted)
         self.path = datetime.today().strftime('%Y-%m-%d')
-        self._tab_panel.txt_destination.SetValue("<External Storage>/%s" % self.path)
+        self._tab_panel.txt_destination.SetValue("storage/images/%s" % self.path)
 
         # ROA count
         self.roa_count = 0
@@ -1466,7 +1466,11 @@ class FastEMAcquiController(object):
                 return
             # Display acquisition time
             projects = self._tab_data_model.projects.value
-            acq_time = fastem.estimateTime([roa for p in projects for roa in p.roas.value])
+            acq_time = 0
+            for p in projects:
+                for roa in p.roas.value:
+                    acq_time += roa.estimate_roa_time()
+            # acq_time = fastem.estimateTime([roa for p in projects for roa in p.roas.value])
             acq_time = math.ceil(acq_time)  # round a bit pessimistic
             txt = u"Estimated time is {}."
             txt = txt.format(units.readable_time(acq_time))
@@ -1533,8 +1537,11 @@ class FastEMAcquiController(object):
         for p in self._tab_data_model.projects.value:
             ppath = os.path.join(self.path, p.name.value)
             for roa in p.roas.value:
-                fn = os.path.join(ppath, roa.name.value)
-                f = fastem.acquire(roa, fn)
+                # fn = os.path.join(ppath, roa.name.value)  # FIXME
+                # FIXME: this is called immediantely twice, however, then on the external storage only the last ROI is visible
+                #  the other ROAs are never acquired; what goes wrong? Same for projects
+                f = fastem.acquire(roa, ppath, self._main_data_model.multibeam, self._main_data_model.descanner,
+                                   self._main_data_model.mppc, self._main_data_model.stage)
                 f.add_done_callback(self.increase_acq_progress)
 
         f.add_done_callback(self.on_acquisition_done)

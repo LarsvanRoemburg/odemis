@@ -3282,7 +3282,13 @@ class FastEMROAController(object):
         self._project_panel = project_panel
         self._view_ctrl = view_ctrl
 
-        self.model = odemis.acq.fastem.FastEMROA(name, acqstream.UNDEFINED_ROI, roc)
+        self._asm = self._tab_data.main.asm
+        self._multibeam = self._tab_data.main.multibeam
+        self._descanner =self._tab_data.main.descanner
+        self._mppc = self._tab_data.main.mppc
+
+        self.model = odemis.acq.fastem.FastEMROA(name, acqstream.UNDEFINED_ROI, roc,
+                                                 self._asm, self._multibeam, self._descanner, self._mppc)
         self.model.coordinates.subscribe(self._on_coordinates)
         self.model.roc.subscribe(self._on_roc)
 
