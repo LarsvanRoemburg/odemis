@@ -27,8 +27,8 @@ from odemis import model
 from odemis.acq.align.spot import FindGridSpots
 from odemis.util.driver import get_backend_status, BACKEND_RUNNING
 
-std_dark_gain = True
-MEAN_SPOT = (700, 510)  # in pixels on DC; (700 * 3.45, 510 * 3.45) um with 3.45um = pixelsize of DC
+std_dark_gain = False
+MEAN_SPOT = (725, 417)  # in pixels on DC; (725 * 3.45, 417 * 3.45) um with 3.45um = pixelsize of DC
 
 
 def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
@@ -36,8 +36,8 @@ def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
     # routine to align the spot grid with the MPPC using the mapping of the MPPC to diagnostic camera
 
     mppc.cellTranslation.value = tuple(tuple((0, 0) for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
-    mppc.cellDarkOffset.value = tuple(tuple(0 for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
-    mppc.cellDigitalGain.value = tuple(tuple(1 for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
+    # mppc.cellDarkOffset.value = tuple(tuple(0 for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
+    # mppc.cellDigitalGain.value = tuple(tuple(1 for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
 
     # setting of the scanner
     multibeam.scanOffset.value = (-0.0935 / 1, 0.0935 / 1)
@@ -48,8 +48,8 @@ def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
     good_offset_x = 0.032043  # a.u.
     good_offset_y = 0.053406
     # bad values for debug:
-    offset_x = 0.052043
-    offset_y = 0.073406
+    offset_x = 0.02043
+    offset_y = 0.033406
     print("inital descan offset x: {}; inital descan offset y: {}".format(offset_x, offset_y))
 
     descanner.scanOffset.value = (offset_x, offset_y)
