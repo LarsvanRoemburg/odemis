@@ -257,7 +257,8 @@ def settings_megafield(multibeam, descanner, mppc, dwell_time):
                                   ((65, 1), (62, 13), (63, 20), (69, 23), (80, 30), (83, 33), (87, 35), (92, 38)))
 
 
-def acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, mm, field_images, dwell_time):
+# def acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, mm, field_images, dwell_time):
+def acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, field_images, dwell_time):
 
     # adjust settings for megafield image acquisition
     settings_megafield(multibeam, descanner, mppc, dwell_time)
@@ -370,14 +371,14 @@ def main(args):
     scanner = model.getComponent(role="e-beam")
     # stage = model.getComponent(role="stage-bare")  # TODO use stage-scan!!???
     stage = model.getComponent(role="stage-scan")
-    mm = model.getComponent(role="stage-pos")
+    # mm = model.getComponent(role="stage-pos")
     beamshift = model.getComponent(role="ebeam-shift")
 
     # check that the MM is referenced
-    while "x" not in mm.position.value.keys():
-        logging.debug("Wait a bit for the metrology module to finish referencing. Can take up to 8 minutes.")
-        time.sleep(1)
-    logging.debug("Metrology module is referenced.")
+    # while "x" not in mm.position.value.keys():
+    #     logging.debug("Wait a bit for the metrology module to finish referencing. Can take up to 8 minutes.")
+    #     time.sleep(1)
+    # logging.debug("Metrology module is referenced.")
 
     scanner.blanker.value = False  # unblank the beam
     scanner.horizontalFoV.value = 2.2e-05  # corresponds to mag = 5000x in quad view
@@ -403,7 +404,8 @@ def main(args):
         # align detector with scanner
         mppc2mp(ccd, multibeam, descanner, mppc, dataflow)
         # acquire the image data
-        acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, mm, field_images, dwell_time)
+        # acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, mm, field_images, dwell_time)
+        acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, field_images, dwell_time)
     except Exception as exp:
         logging.error("%s", exp, exc_info=True)
     finally:
