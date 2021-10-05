@@ -261,9 +261,6 @@ def settings_megafield(multibeam, descanner, mppc, dwell_time):
 # def acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, mm, field_images, dwell_time):
 def acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, field_images, dwell_time):
 
-    # adjust settings for megafield image acquisition
-    settings_megafield(multibeam, descanner, mppc, dwell_time)
-
     # calculate lookup table for stage positions
     overlap = 0.075  # the fractional overlap
     # TODO positions should be calculated on the fly and not via lookuptable
@@ -404,6 +401,8 @@ def main(args):
         image_received.clear()
         # align detector with scanner
         mppc2mp(ccd, multibeam, descanner, mppc, dataflow)
+        # adjust settings for megafield image acquisition
+        settings_megafield(multibeam, descanner, mppc, dwell_time)
         # acquire the image data
         # acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, mm, field_images, dwell_time)
         acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, field_images, dwell_time)
