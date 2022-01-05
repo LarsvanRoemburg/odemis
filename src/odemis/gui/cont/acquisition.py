@@ -2270,6 +2270,7 @@ class AutoCenterController(object):
 class FastEMAlignmentController:
     def __init__(self, tab_data, panel):
         self._tab_data = tab_data
+        self._main_data_model = tab_data.main
         self._panel = panel
 
         self._panel.align_gauge_progress.Hide()
@@ -2294,7 +2295,9 @@ class FastEMAlignmentController:
         self._panel.Layout()
 
         # Start alignment
-        f = align.fastem.align(self._tab_data.main)
+        f = align.fastem.align(self._main_data_model.ebeam, self._main_data_model.multibeam,
+                               self._main_data_model.descanner, self._main_data_model.mppc,
+                               self._main_data_model.ccd, self._main_data_model.stage)
         f.add_done_callback(self._on_alignment_done)
 
     @call_in_wx_main
