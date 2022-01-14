@@ -2268,19 +2268,29 @@ class AutoCenterController(object):
 
 
 class FastEMAlignmentController:
-    def __init__(self, tab_data, panel):
+    """
+    Takes care of the calibration button and process in the calibration panel in the FastEM acquisition tab.
+    """
+    def __init__(self, tab_data, tab_panel):
+        """
+        tab_data: (FastEMGUIData) The representation of the microscope GUI.
+        TODO is this true or only the small calibration panel
+        tab_panel: (wx.Frame) The frame which contains the viewport.
+        """
         self._tab_data = tab_data
         self._main_data_model = tab_data.main
-        self._panel = panel
+        self._panel = tab_panel
 
-        self._panel.align_gauge_progress.Hide()
-        panel.btn_align.Bind(wx.EVT_BUTTON, self._on_btn_align)
-        tab_data.main.is_aligned.subscribe(self._on_align_state, init=True)
+        self._panel.align_gauge_progress.Hide()  # hide gauge
+        self._panel.btn_align.Bind(wx.EVT_BUTTON, self._on_btn_align)  # link button
+        self._tab_data.main.is_aligned.subscribe(self._on_align_state, init=True)
 
     def _on_btn_align(self, evt):
         # TODO: implement cancellation
-        if self._tab_data.main.is_acquiring.value:
-            logging.error("Cancelling alignment currently not supported.")
+        if self._tab_data.main.is_acquiring.value:  # cancelling
+            self.on_cancel(evt)
+            logging.debug("Calibration was cancelled.")
+            # logging.error("Cancelling alignment currently not supported.")
             return
         self._tab_data.main.is_acquiring.value = True  # make sure the acquire/tab buttons are disabled
 
@@ -2290,7 +2300,7 @@ class FastEMAlignmentController:
         # full available space --> use a panel instead of a spacer which can be hidden (spacers cannot) to
         # make it look nice.
         self._panel.align_spacer_panel.Hide()
-        self._panel.align_lbl_gauge.Hide()
+        self._panel.align_lbl_gauge.Hide()  # hide label progress bar
         self._panel.btn_align.SetLabel("Cancel")
         self._panel.Layout()
 
@@ -2302,19 +2312,43 @@ class FastEMAlignmentController:
 
     @call_in_wx_main
     def _on_alignment_done(self, future):
-        self._tab_data.main.is_aligned.value = True
-        self._tab_data.main.is_acquiring.value = False
+        """
+        Callback called when the calibration is finished (either successfully or
+        cancelled)
+        """
+        # TODO if cancelled or failed we don't want to set this VA to True, do we?
+        # self._tab_data.main.is_aligned.value = True
+        # self._tab_data.main.is_acquiring.value = False
 
-        # Enable button, hide progress bar
-        self._panel.align_gauge_progress.Hide()
+        # Enable button
+        self._panel.align_gauge_progress.Hide()  # hide progress bar
         self._panel.align_spacer_panel.Show()
-        self._panel.align_lbl_gauge.Show()
-        self._panel.btn_align.SetLabel("Alignment...")
+        self._panel.align_lbl_gauge.Show()  # show label progress bar
+        self._panel.btn_align.SetLabel("Optical autofocus")
         self._panel.Parent.Layout()
 
+        try:
+            future.result()
+            self._tab_data.main.is_aligned.value = True
+            self._tab_data.main.is_acquiring.value = False
+        except CancelledError:
+            self._panel.align_lbl_gauge.SetLabel("Calibration cancelled.")
+            return
+        except Exception as exp:
+            self._panel.align_lbl_gauge.SetLabel("Calibration failed.")
+            logging.exception("Acquisition failed")
+            return
+
     def _on_align_state(self, aligned):
+        """TODO"""
         if aligned:
-            self._panel.align_lbl_gauge.SetLabel("System is aligned.")
+            self._panel.align_lbl_gauge.SetLabel("Calibration successful.")
         else:
             # TODO: time estimation
-            self._panel.align_lbl_gauge.SetLabel("~ 2 seconds")
+            self._panel.align_lbl_gauge.SetLabel("~ 15 seconds")
+
+    def on_cancel(self, evt):
+        """
+        Called during calibration when pressing the cancel button
+        """
+        fastem._executor.cancel()  # all the rest will be handled by on_alignment_done()

@@ -26,7 +26,9 @@ from concurrent.futures import CancelledError
 from odemis import model
 
 try:
+    import fastem_calibrations
     from fastem_calibrations import autofocus_multiprobe
+    from fastem_calibrations import image_translation_pre_align
 except ImportError:
     fastem_calibrations = None
 
@@ -34,6 +36,7 @@ except ImportError:
 _executor = model.CancellableThreadPoolExecutor(max_workers=1)
 
 
+# TODO pass a list of calibrations to make the code reusable in multiple places?
 def align(scanner, multibeam, descanner, detector, ccd, stage):
     """
     :param main_data: (odemis.gui.model.FastEMMainGUIData) TODO
@@ -44,7 +47,10 @@ def align(scanner, multibeam, descanner, detector, ccd, stage):
         raise ModuleNotFoundError("fastem_calibration module missing. Cannot run calibrations.")
     # If raise, then acquisition is still in progress; cancel? If return, fails in caller as no future returned.
 
-    f = model.ProgressiveFuture()
+    # TODO how to handle the time estimate?
+    est_start = time.time() + 0.1
+    f = model.ProgressiveFuture(start=est_start,
+                                end=est_start + 20)  # Rough time estimation
 
     # Create a task that runs the calibration and alignments.
     task = CalibrationTask(scanner, multibeam, descanner, detector, ccd, stage, f)
@@ -81,7 +87,7 @@ class CalibrationTask(object):
         self._future = future
 
         # list of calibrations that still need to be done.
-        # self._calibrations_remaining = set(TODO)  # Used for progress update.
+        self._calibrations_remaining = set("autofocus_multiprobe")  # Used for progress update.
 
         # keep track if future was cancelled or not
         self._cancelled = False
@@ -104,27 +110,43 @@ class CalibrationTask(object):
         exception = None
 
         # Get the estimated time for the calibrations.
-        total_calibration_time = self.estimate_calibration_time()
+        # total_calibration_time = self.estimate_calibration_time()
 
         # No need to set the start time of the future: it's automatically done when setting its state to running.
-        self._future.set_progress(end=time.time() + total_calibration_time)  # provide end time to future
-        logging.info("Starting calibrations, with expected duration of %f s", total_calibration_time)
+        # self._future.set_progress(end=time.time() + total_calibration_time)  # provide end time to future
+        # logging.info("Starting calibrations, with expected duration of %f s", total_calibration_time)
 
         dataflow = self._detector.data
 
         try:
             logging.debug("Starting calibrations.")
-            autofocus_multiprobe.run_autofocus(self._ccd, self._stage)
+            # autofocus_multiprobe.run_autofocus(self._scanner, self._multibeam, self._descanner, self._detector,
+            #                                    dataflow, self._ccd, self._stage)
+            autofocus_multiprobe.run_autofocus(self._scanner, self._multibeam, self._descanner, self._detector,
+                                               dataflow, self._ccd, self._stage)
 
-        except CancelledError:  # raised in acquire_roa()
-            logging.debug("Acquisition was cancelled.")
+            self._calibrations_remaining.discard("autofocus-multiprobe")
+
+            # In case the calibrations was cancelled by a client, before the future returned, raise cancellation error.
+            if self._cancelled:
+                raise CancelledError()
+
+            # Update the time left for the calibrations.
+            expected_time = len(self._calibrations_remaining) * 10
+            self._future.set_progress(end=time.time() + expected_time)
+
+            image_translation_pre_align.run_image_translation_pre_align_fake(self._scanner, self._multibeam,
+                                                                             self._descanner, self._detector, dataflow)
+
+        except CancelledError:  # raised in TODO()
+            logging.debug("Calibration was cancelled.")
             raise
 
         except Exception as ex:
-                raise ex
+            exception = ex  # let the caller handle the exception
         finally:
             # Remove references to the calibrations once all calibrations are finished/cancelled.
-            # self._calibrations_remaining.clear()
+            self._calibrations_remaining.clear()
             logging.debug("Finish calibrations.")
 
         return exception
@@ -137,13 +159,14 @@ class CalibrationTask(object):
         """
         self._cancelled = True
 
+        # TODO how do I stop a calibration while running?
+        #  Do we want to allow the user to do so -> yes I guess
         # Report if it's too late for cancellation (and the f.result() will return)
         # if not self._calibrations_remaining:  # TODO
         #     return False
 
         return True
 
-    def estimate_calibration_time(self):
-        """TODO"""
-        time.sleep(3)
-        return 30*60  # TODO
+    # def estimate_calibration_time(self):
+    #     """TODO"""
+    #     return 10
