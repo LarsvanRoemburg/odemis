@@ -114,6 +114,9 @@ HW_SETTINGS_CONFIG = {
             ("depthOfField", {
                 "control_type": odemis.gui.CONTROL_NONE,
             }),
+            ("pointSpreadFunctionSize", {
+                "control_type": odemis.gui.CONTROL_NONE,
+            }),
             # Advanced settings for andorcam2
             ("verticalReadoutRate", {
                 "control_type": odemis.gui.CONTROL_NONE,
@@ -318,6 +321,9 @@ HW_SETTINGS_CONFIG = {
             ("depthOfField", {
                 "control_type": odemis.gui.CONTROL_NONE,
             }),
+            ("pointSpreadFunctionSize", {
+                "control_type": odemis.gui.CONTROL_NONE,
+            }),
             # Advanced settings for andorcam2
             ("verticalReadoutRate", {
                 "control_type": odemis.gui.CONTROL_NONE,
@@ -417,6 +423,9 @@ HW_SETTINGS_CONFIG = {
                 "control_type": odemis.gui.CONTROL_NONE,
             }),
             ("depthOfField", {
+                "control_type": odemis.gui.CONTROL_NONE,
+            }),
+            ("pointSpreadFunctionSize", {
                 "control_type": odemis.gui.CONTROL_NONE,
             }),
             # Advanced settings for andorcam2
@@ -645,6 +654,16 @@ HW_SETTINGS_CONFIG_PER_ROLE = {
             "emGain": {
                 # The only SECOMs with EM CCDs use the automatic mode ("None")
                 "control_type": odemis.gui.CONTROL_NONE,
+            },
+        },
+    },
+    "mbsem": {
+        "e-beam":
+        {
+            "dwellTime":
+            {   # In XT the minimum dwell time can change based on the HFW, 100ns is the highest minimum value, if
+                # a user would set it to a lower value an error might be raised.
+                "range": (100e-9, 1.0),
             },
         },
     },
