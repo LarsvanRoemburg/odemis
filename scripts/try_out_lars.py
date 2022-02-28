@@ -2,13 +2,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 from odemis.dataio import tiff
 from scipy.ndimage.filters import gaussian_filter
-from scipy.ndimage import binary_erosion
+from scipy.ndimage import binary_opening
 from scipy.signal import fftconvolve
 
 # import analyse_shifts
 
 which_path = 0
 threshold_mask = 0.25
+threshold_end = 0.3
 blur = 25
 cropping = True
 
@@ -99,8 +100,8 @@ print("dx is {} pixels".format(dx_pix))
 print("dy is {} pixels".format(dy_pix))
 # print("dz is {} slices".format(dz_pix))
 
-plt.imshow(conv)
-plt.show()
+# plt.imshow(conv)
+# plt.show()
 
 if dx_pix > 0:
     img_after[:, dx_pix:] = img_after[:, :-dx_pix]
@@ -112,23 +113,6 @@ if dy_pix > 0:
 elif dy_pix < 0:
     img_after[:dy_pix, :] = img_after[-dy_pix:, :]
 
-'''
-test = np.zeros((500, 500))
-test[250, 250] = 100
-test = gaussian_filter(test, sigma=25)
-test = test/np.max(test) > 0.01
-fig, ax = plt.subplots(5, 1)
-ax[0].imshow(test)
-test = binary_erosion(test, iterations=10)  # , structure=np.ones((3, 3)))
-ax[1].imshow(test)
-test = binary_erosion(test, iterations=10)  # , structure=np.ones((3, 3)))
-ax[2].imshow(test)
-test = binary_erosion(test, iterations=10)  # , structure=np.ones((3, 3)))
-ax[3].imshow(test)
-test = binary_erosion(test, iterations=10)  # , structure=np.ones((3, 3)))
-ax[4].imshow(test)
-plt.show()
-'''
 print(np.min(img_before))
 print(np.min(img_after))
 print("\n")
@@ -153,15 +137,18 @@ img_after_blurred = (img_after_blurred - base_lvl_after) / (np.max(img_after_blu
 
 img_before = (img_before - base_lvl_before) / (np.max(img_before) - base_lvl_before)
 img_after = (img_after - base_lvl_after) / (np.max(img_after) - base_lvl_after)
+img_before[img_before < 0] = 0
+img_after[img_after < 0] = 0
 
-diff = img_before_blurred - img_after_blurred
+diff = img_before_blurred - 2*img_after_blurred
 mask = diff >= threshold_mask
-mask2 = binary_erosion(mask, iterations=blur)
+mask2 = binary_opening(mask, iterations=int(blur/2))  # First opening
+
 # mask = erode mask to get rid of signal outside the roi due to blurring
 masked_img = img_after * mask
 masked_img2 = img_after * mask2
 
-index_mask = np.where(mask == True)
+index_mask = np.where(mask)
 
 if cropping & (len(index_mask[0]) != 0):
     x_min = np.min(index_mask[1])
@@ -172,8 +159,11 @@ if cropping & (len(index_mask[0]) != 0):
     masked_img = masked_img[y_min - 5:y_max + 5, x_min - 5:x_max + 5]
     masked_img2 = masked_img2[y_min - 5:y_max + 5, x_min - 5:x_max + 5]
 
-binary_end_result1 = masked_img >= 0.4
-binary_end_result2 = masked_img2 >= 0.4
+binary_end_result1 = masked_img >= threshold_end
+binary_end_result2 = masked_img2 >= threshold_end
+
+# binary_end_result1 = binary_opening(binary_end_result1, iterations=5)
+binary_end_result2 = binary_opening(binary_end_result2, iterations=3)  # second opening
 
 # masked_img[mask] = masked_img[mask] - base_lvl_after
 # masked_img[masked_img < 0] = 0
@@ -207,10 +197,13 @@ ax[0, 1].set_title("after")
 ax[1, 0].imshow(img_before_blurred)
 ax[1, 1].imshow(img_after_blurred)
 ax[2, 0].imshow(masked_img)
-ax[2, 0].set_title("the difference")
+ax[2, 0].set_title("masked without opening")
 ax[2, 1].imshow(masked_img2)
+ax[2, 1].set_title("masked with opening")
 ax[3, 0].imshow(binary_end_result1)
+ax[3, 0].set_title("end without 2nd opening")
 ax[3, 1].imshow(binary_end_result2)
+ax[3, 1].set_title("end with 2nd opening")
 plt.show()
 
 print("Successful!")
