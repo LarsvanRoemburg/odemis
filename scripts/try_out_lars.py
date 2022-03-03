@@ -4,18 +4,18 @@ from odemis.dataio import tiff
 from scipy.ndimage.filters import gaussian_filter
 from scipy.ndimage import binary_erosion, binary_dilation, binary_opening, binary_closing
 from scipy.signal import fftconvolve
-# from cv2 import HoughCircles, HOUGH_GRADIENT
 
+# from cv2 import HoughCircles, HOUGH_GRADIENT
 # import analyse_shifts
 
 # which_path = 4
 threshold_mask = 0.3
 threshold_end = 0.25
 blur = 25
-cropping = True
-squaring = False
-mean_zstack = False  # if true the mean is taken from the z-stack, if false the max intensity projection is taken
-max_zstack = True - mean_zstack
+max_slices = 40
+cropping = True  # if true, the last images will be cropped to only the mask
+squaring = True  # if true, the mask will be altered to be a square
+mean_z_stack = False  # if true the mean is taken from the z-stack, if false the max intensity projection is taken
 
 channel_before = [0, 0, 0, 0, 0, 0, 0, 1, 0]
 channel_after = [0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -49,15 +49,21 @@ data_paths_after = ["/home/victoria/Documents/Lars/data/1/FOV2_GFP_cp04.tif",
                     "Yeast/20200918-zstack_400nm.ome.tiff",
                     "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Mammalian_cells/FOV7_after_GFP.tif"
                     ]
-for nnn in np.arange(3, 9, 1, dtype=int):
-    print("dataset nr. {}".format(nnn+1))
+for nnn in np.arange(4, 9, 1, dtype=int):
+    print("dataset nr. {}".format(nnn + 1))
 
     # convert the image to a numpy array and set a threshold for outliers in the image / z-stack
+    # for data before milling
     data_before_milling = tiff.read_data(data_paths_before[nnn])
     meta_before = data_before_milling[channel_before[nnn]].metadata
-
     if z_value_before[nnn] != np.pi:
-        img_before = np.array(data_before_milling[channel_before[nnn]][0][0], dtype=int)
+        print("#z-slices: {}".format(len(data_before_milling[channel_before[nnn]][0][0])))
+        if len(data_before_milling[channel_before[nnn]][0][0]) < max_slices:  # if there are too many slices,
+            # take the #max_slices in the middle
+            img_before = np.array(data_before_milling[channel_before[nnn]][0][0], dtype=int)
+        else:
+            s = int((len(data_before_milling[channel_before[nnn]][0][0]) - max_slices) / 2)
+            img_before = np.array(data_before_milling[channel_before[nnn]][0][0][s:-s], dtype=int)
         del data_before_milling
 
         histo, bins = np.histogram(img_before, bins=2000)
@@ -67,12 +73,13 @@ for nnn in np.arange(3, 9, 1, dtype=int):
         thr_out_before = bins[plc] / 2 + bins[plc + 1] / 2
         img_before[img_before > thr_out_before] = thr_out_before
 
-        if mean_zstack:
+        if mean_z_stack:
             img_before = np.mean(img_before, axis=0)
         else:
             img_before = np.max(img_before, axis=0)
 
     else:
+        print("#z-slices: 1")
         img_before = np.array(data_before_milling[channel_before[nnn]], dtype=int)
         del data_before_milling
 
@@ -85,11 +92,17 @@ for nnn in np.arange(3, 9, 1, dtype=int):
 
     del histo, bins
 
+    # for data after milling
     data_after_milling = tiff.read_data(data_paths_after[nnn])
     meta_after = data_after_milling[channel_after[nnn]].metadata
 
     if z_value_after[nnn] != np.pi:
-        img_after = np.array(data_after_milling[channel_after[nnn]][0][0], dtype=int)
+        if len(data_after_milling[channel_after[nnn]][0][0]) < max_slices:  # if there are too many slices,
+            # take the #max_slices in the middle
+            img_after = np.array(data_after_milling[channel_after[nnn]][0][0], dtype=int)
+        else:
+            s = int((len(data_after_milling[channel_after[nnn]][0][0]) - max_slices) / 2)
+            img_after = np.array(data_after_milling[channel_after[nnn]][0][0][s:-s], dtype=int)
         del data_after_milling
 
         histo, bins = np.histogram(img_after, bins=2000)
@@ -99,7 +112,7 @@ for nnn in np.arange(3, 9, 1, dtype=int):
         thr_out_after = bins[plc] / 2 + bins[plc + 1] / 2
         img_after[img_after > thr_out_after] = thr_out_after
 
-        if mean_zstack:
+        if mean_z_stack:
             img_after = np.mean(img_after, axis=0)
         else:
             img_after = np.max(img_after, axis=0)
@@ -121,19 +134,12 @@ for nnn in np.arange(3, 9, 1, dtype=int):
                                                                      manual_thr_out_after[nnn]))
     print("histogram 99% threshold: \nbefore: {}\nafter: {}".format(thr_out_before, thr_out_after))
 
-    # plotting a histogram of the intensity values of ...
-    # plt.title('histogram')
-    # plt.xlabel("value")
-    # plt.ylabel("frequency")
-    # plt.show()
-
     # rescaling one image to the other if necessary
     if img_after.shape != img_before.shape:
         if img_after.shape > img_before.shape:
             img_rescaled = np.zeros(img_after.shape)
-            d_pix = img_before.shape[0] / img_after.shape[
-                0]  # here we assume that the difference in x is the same as in
-            # y as pixels are squares
+            d_pix = img_before.shape[0] / img_after.shape[0]  # here we assume that the difference in x is the same
+            # as in y as pixels are squares
             for i in range(img_before.shape[0]):
                 x_vals = np.arange(0, len(img_before[i, :]), 1)
                 y_vals = img_before[i, :]
@@ -148,13 +154,11 @@ for nnn in np.arange(3, 9, 1, dtype=int):
                 x_new = np.interp(y_new, y_vals, x_vals)
                 img_rescaled[:, i] = x_new
             img_before = img_rescaled
-            del x_vals, y_vals, x_new, y_new, img_rescaled
 
-        else:
+        else:  # copied the code but then for the images swapped, this is better memory wise (I think)
             img_rescaled = np.zeros(img_before.shape)
-            d_pix = img_after.shape[0] / img_before.shape[
-                0]  # here we assume that the difference in x is the same as in
-            # y as pixels are squares
+            d_pix = img_after.shape[0] / img_before.shape[0]  # here we assume that the difference in x is the same
+            # as in y as pixels are squares
             for i in range(img_after.shape[0]):
                 x_vals = np.arange(0, len(img_after[i, :]), 1)
                 y_vals = img_after[i, :]
@@ -169,7 +173,7 @@ for nnn in np.arange(3, 9, 1, dtype=int):
                 x_new = np.interp(y_new, y_vals, x_vals)
                 img_rescaled[:, i] = x_new
             img_after = img_rescaled
-            del x_vals, y_vals, x_new, y_new, img_rescaled
+        del x_vals, y_vals, x_new, y_new, img_rescaled
 
     # calculate the shift between the two images
     mean_before = np.mean(img_before)
@@ -192,6 +196,7 @@ for nnn in np.arange(3, 9, 1, dtype=int):
     print("dx is {} pixels".format(dx_pix))
     print("dy is {} pixels".format(dy_pix))
 
+    # shifting the after milling image towards the before milling image to overlap nicely
     if dx_pix > 0:
         img_after[:, dx_pix:] = img_after[:, :-dx_pix]
     elif dx_pix < 0:
@@ -202,44 +207,34 @@ for nnn in np.arange(3, 9, 1, dtype=int):
     elif dy_pix < 0:
         img_after[:dy_pix, :] = img_after[-dy_pix:, :]
 
-    # print(np.min(img_before))
-    # print(np.min(img_after))
-    # print("\n")
-    # print(np.max(img_before))
-    # print(np.max(img_after))
-    # print("\n")
-
     # preprocessing steps of the images: blurring the image
     img_after_blurred = gaussian_filter(img_after, sigma=blur)
     img_before_blurred = gaussian_filter(img_before, sigma=blur)
 
-    # print(np.min(img_before_blurred))
-    # print(np.min(img_after_blurred))
-    # print(np.max(img_before_blurred))
-    # print(np.max(img_after_blurred))
-    # print("\n")
-
-    # preprocessing steps of the images: normalization to [0,1] interval
+    # preprocessing steps of the images: normalization of blurred images to [0,1] interval
     base_lvl_before = np.min(img_before_blurred)
     base_lvl_after = np.min(img_after_blurred)
     img_before_blurred = (img_before_blurred - base_lvl_before) / (np.max(img_before_blurred) - base_lvl_before)
     img_after_blurred = (img_after_blurred - base_lvl_after) / (np.max(img_after_blurred) - base_lvl_after)
 
+    # preprocessing steps of the images: normalization of initial images to [0,1] interval
     img_before = (img_before - base_lvl_before) / (np.max(img_before) - base_lvl_before)
     img_after = (img_after - base_lvl_after) / (np.max(img_after) - base_lvl_after)
+    # you take base_lvl of blurred image because of noise in the initial image (the range would be bigger than needed)
     img_before[img_before < 0] = 0
     img_after[img_after < 0] = 0
 
     # calculating the difference between the two images and creating a mask
-    diff = img_before_blurred - 1.5*img_after_blurred  # times 2 to account for the intensity differences (more robust)
+    diff = img_before_blurred - 1.5 * img_after_blurred  # times 1.5 to account for intensity differences (more robust)
     mask = diff >= threshold_mask
-    mask2 = binary_opening(mask, iterations=int(2*blur/3))  # First opening
-    # mask2 = binary_erosion(mask2, iterations=5)  # if the edges give too much signal we can erode the mask a bit more
+    mask2 = binary_opening(mask, iterations=int(blur / 2))  # First opening
+    mask2 = binary_erosion(mask2, iterations=5)  # if the edges give too much signal we can erode the mask a bit more
 
-    # to crop the image around the ROI if possible and wanted: cropping = True
+    # to crop and/or square the image around the ROI if possible and wanted: cropping = True and/or squaring = True
     index_mask = np.where(mask)
     index_mask2 = np.where(mask2)
 
+    # squaring the mask
     if squaring & (len(index_mask2[0]) != 0):
         x_min = np.min(index_mask2[1])
         y_min = np.min(index_mask2[0])
@@ -247,46 +242,35 @@ for nnn in np.arange(3, 9, 1, dtype=int):
         y_max = np.max(index_mask2[0])
         mask2[y_min:y_max, x_min:x_max] = True
 
+    # getting the after milling signal only in the mask
     masked_img = img_after * mask
     masked_img2 = img_after * mask2
 
+    # cropping the image to the mask
     if cropping & (len(index_mask[0]) != 0):
         x_min = np.min(index_mask[1])
         y_min = np.min(index_mask[0])
         x_max = np.max(index_mask[1])
         y_max = np.max(index_mask[0])
-    # else:
-    #     x_min = 0
-    #     y_min = 0
-    #     x_max = img_after.shape[1]
-    #     y_max = img_after.shape[0]
 
         masked_img = masked_img[y_min:y_max, x_min:x_max]
         masked_img2 = masked_img2[y_min:y_max, x_min:x_max]
+    else:  # for the extent in the plotting
+        x_min = 0
+        y_min = 0
+        x_max = img_after.shape[1]
+        y_max = img_after.shape[0]
 
     # setting a threshold for the image_after within the mask
     binary_end_result1 = masked_img >= threshold_end
     binary_end_result2 = masked_img2 >= threshold_end
 
     # getting rid of too small ROIs and noise after the threshold
-    # binary_end_result1 = binary_opening(binary_end_result1, iterations=5)
-    binary_end_result2 = binary_opening(binary_closing(binary_end_result2, iterations=2),
-                                        iterations=4)  # second opening
+    binary_end_result2 = binary_opening(binary_closing(binary_end_result2, iterations=1),
+                                        iterations=4)  # first closing and second opening
 
     # circles = HoughCircles(binary_end_result2, HOUGH_GRADIENT, 1, 20, param1=60, param2=20,
     #                        minRadius=0, maxRadius=img_after.shape[0] / 4)
-
-    # print(np.min(img_before))
-    # print(np.min(img_after))
-    # print(np.min(img_before_blurred))
-    # print(np.min(img_after_blurred))
-    # print(np.min(diff))
-    # print("\n")
-    # print(np.max(img_before))
-    # print(np.max(img_after))
-    # print(np.max(img_before_blurred))
-    # print(np.max(img_after_blurred))
-    # print(np.max(diff))
 
     masked_img[0, 0] = 1  # to give them the same color scale
     masked_img2[0, 0] = 1  # to give them the same color scale
@@ -319,6 +303,6 @@ for nnn in np.arange(3, 9, 1, dtype=int):
 
     del img_before, img_before_blurred, img_after, img_after_blurred, diff, mask, mask2, masked_img, masked_img2, \
         binary_end_result1, binary_end_result2, meta_before, meta_after, index_mask, index_mask2, fig, ax, \
-        shift, plc, dx_pix, dy_pix
+        shift, plc, dx_pix, dy_pix, x_min, x_max, y_min, y_max
 
     print("Successful!\n")
