@@ -49,7 +49,7 @@ data_paths_after = ["/home/victoria/Documents/Lars/data/1/FOV2_GFP_cp04.tif",
                     "Yeast/20200918-zstack_400nm.ome.tiff",
                     "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Mammalian_cells/FOV7_after_GFP.tif"
                     ]
-for nnn in np.arange(5, 9, 1, dtype=int):
+for nnn in np.arange(3, 9, 1, dtype=int):
     print("dataset nr. {}".format(nnn+1))
 
     # convert the image to a numpy array and set a threshold for outliers in the image / z-stack
@@ -115,6 +115,7 @@ for nnn in np.arange(5, 9, 1, dtype=int):
         img_after[img_after > thr_out_after] = thr_out_after
 
     del histo, bins
+
     print("Pixel sizes are the same: {}".format(meta_before["Pixel size"][0] == meta_after["Pixel size"][0]))
     print("manual outlier threshold: \nbefore: {}\nafter: {}".format(manual_thr_out_before[nnn],
                                                                      manual_thr_out_after[nnn]))
@@ -254,6 +255,11 @@ for nnn in np.arange(5, 9, 1, dtype=int):
         y_min = np.min(index_mask[0])
         x_max = np.max(index_mask[1])
         y_max = np.max(index_mask[0])
+    # else:
+    #     x_min = 0
+    #     y_min = 0
+    #     x_max = img_after.shape[1]
+    #     y_max = img_after.shape[0]
 
         masked_img = masked_img[y_min:y_max, x_min:x_max]
         masked_img2 = masked_img2[y_min:y_max, x_min:x_max]
@@ -313,6 +319,6 @@ for nnn in np.arange(5, 9, 1, dtype=int):
 
     del img_before, img_before_blurred, img_after, img_after_blurred, diff, mask, mask2, masked_img, masked_img2, \
         binary_end_result1, binary_end_result2, meta_before, meta_after, index_mask, index_mask2, fig, ax, \
-        x_min, x_max, y_min, y_max, shift, plc, dx_pix, dy_pix
+        shift, plc, dx_pix, dy_pix
 
     print("Successful!\n")
