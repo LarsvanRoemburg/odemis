@@ -4,6 +4,7 @@ from odemis.dataio import tiff
 from scipy.ndimage.filters import gaussian_filter
 from scipy.ndimage import binary_erosion, binary_dilation, binary_opening, binary_closing
 from scipy.signal import fftconvolve
+import gc
 
 # from cv2 import HoughCircles, HOUGH_GRADIENT
 # import analyse_shifts
@@ -12,17 +13,10 @@ from scipy.signal import fftconvolve
 threshold_mask = 0.3
 threshold_end = 0.25
 blur = 25
-max_slices = 40
+max_slices = 30
 cropping = True  # if true, the last images will be cropped to only the mask
 squaring = True  # if true, the mask will be altered to be a square
-mean_z_stack = False  # if true the mean is taken from the z-stack, if false the max intensity projection is taken
-
-channel_before = [0, 0, 0, 0, 0, 0, 0, 1, 0]
-channel_after = [0, 0, 0, 0, 0, 0, 0, 0, 0]
-manual_thr_out_before = [300, 700, 3000, 300, 300, 300, 300, 200, 750]  # make this percentage of max image intensity
-manual_thr_out_after = [300, 700, 3000, 300, 300, 300, 300, 8000, 900]  # make this percentage of max image intensity
-z_value_before = [20, 23, 20, 25, 30, np.pi, 25, np.pi, 27]  # np.pi means it is not a z-stack, only one image
-z_value_after = [13, 15, 20, 19, 30, np.pi, 19, 1, 22]  # np.pi means it is not a z-stack, only one image
+mean_z_stack = True  # if true the mean is taken from the z-stack, if false the max intensity projection is taken
 
 data_paths_before = ["/home/victoria/Documents/Lars/data/1/FOV2_GFP_cp00.tif",
                      "/home/victoria/Documents/Lars/data/2/FOV1_checkpoint_00.tiff",
@@ -34,7 +28,18 @@ data_paths_before = ["/home/victoria/Documents/Lars/data/1/FOV2_GFP_cp00.tif",
                      "/home/victoria/Documents/Lars/data/meteor1/FOV3_Meteor_stacks/EA010_8_FOV3_checkpoint_00_1.tiff",
                      "/home/victoria/Documents/Lars/data/XA Yeast-20220215T093027Z-001/XA "
                      "Yeast/20200918_millingsite_start.ome.tiff",
-                     "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Mammalian_cells/FOV7_cp00_GFP.tif"
+                     "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Mammalian_cells/FOV7_cp00_GFP.tif",
+                     "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Mammalian_cells/FOV9_cp00_GFP.tif",
+                     "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Mammalian_cells/FOV11_cp00_GFP.tif",
+                     "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Mammalian_cells/FOV12_cp00_GFP.tif",
+                     "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Yeast_eGFP-Ede1/G2_FOV1_checkpoint00.tif",
+                     "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Yeast_eGFP-Ede1/G2_FOV2_checkpoint00.tif",
+                     "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Yeast_eGFP-Ede1/G2_FOV3_checkpoint00.tif",
+                     "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Yeast_eGFP-Ede1/G2_FOV4_checkpoint00.tif",
+                     "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/negative_examples/yeast/"
+                     "FOV3_new_checkpoint_00.tiff",
+                     "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/negative_examples/yeast/"
+                     "FOV6_checkpoint00_ch00.tiff"
                      ]
 
 data_paths_after = ["/home/victoria/Documents/Lars/data/1/FOV2_GFP_cp04.tif",
@@ -47,18 +52,44 @@ data_paths_after = ["/home/victoria/Documents/Lars/data/1/FOV2_GFP_cp04.tif",
                     "/home/victoria/Documents/Lars/data/meteor1/FOV3_Meteor_stacks/EA010_8_FOV3_final.tiff",
                     "/home/victoria/Documents/Lars/data/XA Yeast-20220215T093027Z-001/XA "
                     "Yeast/20200918-zstack_400nm.ome.tiff",
-                    "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Mammalian_cells/FOV7_after_GFP.tif"
+                    "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Mammalian_cells/FOV7_after_GFP.tif",
+                    "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Mammalian_cells/FOV9_after_GFP.tif",
+                    "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Mammalian_cells/FOV11_after_GFP.tif",
+                    "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Mammalian_cells/FOV12_after_GFP.tif",
+                    "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Yeast_eGFP-Ede1/G2_FOV1_checkpoint03.tif",
+                    "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Yeast_eGFP-Ede1/G2_FOV2_checkpoint04.tif",
+                    "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Yeast_eGFP-Ede1/G2_FOV3_checkpoint04.tif",
+                    "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Yeast_eGFP-Ede1/G2_FOV4_checkpoint04.tif",
+                    "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/negative_examples/yeast/"
+                    "FOV3_new_final_lamella.tiff",
+                    "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/negative_examples/yeast/"
+                    "FOV6_checkpoint02_ch00.tiff"
                     ]
-for nnn in np.arange(4, 9, 1, dtype=int):
+
+l = len(data_paths_before)
+channel_before = np.zeros(l, dtype=int)
+channel_before[7] = 1
+channel_after = np.zeros(l, dtype=int)
+manual_thr_out_before = np.zeros(l, dtype=int)
+manual_thr_out_after = np.zeros(l, dtype=int)
+manual_thr_out_before[:9] = np.array([300, 700, 3000, 300, 300, 300, 300, 200, 750])
+manual_thr_out_after[:9] = np.array([300, 700, 3000, 300, 300, 300, 300, 8000, 900])
+# z_value_before = np.zeros(l)
+# z_value_after = np.zeros(l)
+# z_value_before[:9] = np.array([20, 23, 20, 25, 30, np.pi, 25, np.pi, 27])
+# z_value_after[:9] = np.array([13, 15, 20, 19, 30, np.pi, 19, 1, 22])# np.pi means it is not a z-stack, only one image
+
+for nnn in np.arange(15, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
     print("dataset nr. {}".format(nnn + 1))
 
     # convert the image to a numpy array and set a threshold for outliers in the image / z-stack
     # for data before milling
     data_before_milling = tiff.read_data(data_paths_before[nnn])
     meta_before = data_before_milling[channel_before[nnn]].metadata
-    if z_value_before[nnn] != np.pi:
-        print("#z-slices: {}".format(len(data_before_milling[channel_before[nnn]][0][0])))
-        if len(data_before_milling[channel_before[nnn]][0][0]) < max_slices:  # if there are too many slices,
+
+    try:
+        print("#z-slices before: {}".format(len(data_before_milling[channel_before[nnn]][0][0])))
+        if len(data_before_milling[channel_before[nnn]][0][0]) <= max_slices:  # if there are too many slices,
             # take the #max_slices in the middle
             img_before = np.array(data_before_milling[channel_before[nnn]][0][0], dtype=int)
         else:
@@ -78,8 +109,8 @@ for nnn in np.arange(4, 9, 1, dtype=int):
         else:
             img_before = np.max(img_before, axis=0)
 
-    else:
-        print("#z-slices: 1")
+    except TypeError:
+        print("#z-slices before: 1")
         img_before = np.array(data_before_milling[channel_before[nnn]], dtype=int)
         del data_before_milling
 
@@ -96,8 +127,9 @@ for nnn in np.arange(4, 9, 1, dtype=int):
     data_after_milling = tiff.read_data(data_paths_after[nnn])
     meta_after = data_after_milling[channel_after[nnn]].metadata
 
-    if z_value_after[nnn] != np.pi:
-        if len(data_after_milling[channel_after[nnn]][0][0]) < max_slices:  # if there are too many slices,
+    try:
+        print("#z-slices after: {}".format(len(data_after_milling[channel_after[nnn]][0][0])))
+        if len(data_after_milling[channel_after[nnn]][0][0]) <= max_slices:  # if there are too many slices,
             # take the #max_slices in the middle
             img_after = np.array(data_after_milling[channel_after[nnn]][0][0], dtype=int)
         else:
@@ -116,7 +148,8 @@ for nnn in np.arange(4, 9, 1, dtype=int):
             img_after = np.mean(img_after, axis=0)
         else:
             img_after = np.max(img_after, axis=0)
-    else:
+    except TypeError:
+        print("#z-slices after: 1")
         img_after = np.array(data_after_milling[channel_after[nnn]], dtype=int)
         del data_after_milling
 
@@ -304,5 +337,6 @@ for nnn in np.arange(4, 9, 1, dtype=int):
     del img_before, img_before_blurred, img_after, img_after_blurred, diff, mask, mask2, masked_img, masked_img2, \
         binary_end_result1, binary_end_result2, meta_before, meta_after, index_mask, index_mask2, fig, ax, \
         shift, plc, dx_pix, dy_pix, x_min, x_max, y_min, y_max
+    gc.collect()
 
     print("Successful!\n")
