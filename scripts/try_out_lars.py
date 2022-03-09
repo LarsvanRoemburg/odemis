@@ -4,19 +4,18 @@ from odemis.dataio import tiff
 from scipy.ndimage.filters import gaussian_filter
 from scipy.ndimage import binary_erosion, binary_dilation, binary_opening, binary_closing
 from scipy.signal import fftconvolve
+from cv2 import HoughCircles, HOUGH_GRADIENT_ALT
 import gc
 
-# from cv2 import HoughCircles, HOUGH_GRADIENT
 # import analyse_shifts
 
-# which_path = 4
 threshold_mask = 0.3
 threshold_end = 0.25
 blur = 25
 max_slices = 30
 cropping = True  # if true, the last images will be cropped to only the mask
 squaring = True  # if true, the mask will be altered to be a square
-mean_z_stack = True  # if true the mean is taken from the z-stack, if false the max intensity projection is taken
+mean_z_stack = False  # if true the mean is taken from the z-stack, if false the max intensity projection is taken
 
 data_paths_before = ["/home/victoria/Documents/Lars/data/1/FOV2_GFP_cp00.tif",
                      "/home/victoria/Documents/Lars/data/2/FOV1_checkpoint_00.tiff",
@@ -79,8 +78,9 @@ manual_thr_out_after[:9] = np.array([300, 700, 3000, 300, 300, 300, 300, 8000, 9
 # z_value_before[:9] = np.array([20, 23, 20, 25, 30, np.pi, 25, np.pi, 27])
 # z_value_after[:9] = np.array([13, 15, 20, 19, 30, np.pi, 19, 1, 22])# np.pi means it is not a z-stack, only one image
 
-for nnn in np.arange(15, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+for nnn in np.arange(5, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
     print("dataset nr. {}".format(nnn + 1))
+    print(data_paths_before[nnn])
 
     # convert the image to a numpy array and set a threshold for outliers in the image / z-stack
     # for data before milling
@@ -88,12 +88,13 @@ for nnn in np.arange(15, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
     meta_before = data_before_milling[channel_before[nnn]].metadata
 
     try:
-        print("#z-slices before: {}".format(len(data_before_milling[channel_before[nnn]][0][0])))
-        if len(data_before_milling[channel_before[nnn]][0][0]) <= max_slices:  # if there are too many slices,
+        num_z = len(data_before_milling[channel_before[nnn]][0][0])
+        print("#z-slices before: {}".format(num_z))
+        if num_z <= max_slices:  # if there are too many slices,
             # take the #max_slices in the middle
             img_before = np.array(data_before_milling[channel_before[nnn]][0][0], dtype=int)
         else:
-            s = int((len(data_before_milling[channel_before[nnn]][0][0]) - max_slices) / 2)
+            s = int((num_z - max_slices) / 2)
             img_before = np.array(data_before_milling[channel_before[nnn]][0][0][s:-s], dtype=int)
         del data_before_milling
 
@@ -214,6 +215,11 @@ for nnn in np.arange(15, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
     img_before = img_before - mean_before
     img_after = img_after - mean_after
     conv = fftconvolve(img_before, img_after[::-1, ::-1], mode='same')
+    conv[:int(conv.shape[0]/5), :] = 0
+    conv[-int(conv.shape[0]/5):, :] = 0
+    conv[:, :int(conv.shape[1]/5)] = 0
+    conv[:, -int(conv.shape[1]/5):] = 0
+
     shift = np.where(conv == np.max(conv))
     shift = np.asarray(shift)
     shift[0] = shift[0] - img_after.shape[0] / 2
@@ -232,13 +238,17 @@ for nnn in np.arange(15, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
     # shifting the after milling image towards the before milling image to overlap nicely
     if dx_pix > 0:
         img_after[:, dx_pix:] = img_after[:, :-dx_pix]
+        # img_after[:, :dx_pix] = np.min(img_after[:, :dx_pix])
     elif dx_pix < 0:
         img_after[:, :dx_pix] = img_after[:, -dx_pix:]
+        # img_after[:, dx_pix:] = np.min(img_after[:, dx_pix:])
 
     if dy_pix > 0:
         img_after[dy_pix:, :] = img_after[:-dy_pix, :]
+        # img_after[:dy_pix, :] = np.min(img_after[:dy_pix, :])
     elif dy_pix < 0:
         img_after[:dy_pix, :] = img_after[-dy_pix:, :]
+        # img_after[dy_pix:, :] = np.min(img_after[dy_pix:, :])
 
     # preprocessing steps of the images: blurring the image
     img_after_blurred = gaussian_filter(img_after, sigma=blur)
@@ -275,6 +285,8 @@ for nnn in np.arange(15, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
         y_max = np.max(index_mask2[0])
         mask2[y_min:y_max, x_min:x_max] = True
 
+    # mask = mask2
+
     # getting the after milling signal only in the mask
     masked_img = img_after * mask
     masked_img2 = img_after * mask2
@@ -299,11 +311,26 @@ for nnn in np.arange(15, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
     binary_end_result2 = masked_img2 >= threshold_end
 
     # getting rid of too small ROIs and noise after the threshold
-    binary_end_result2 = binary_opening(binary_closing(binary_end_result2, iterations=1),
-                                        iterations=4)  # first closing and second opening
-
-    # circles = HoughCircles(binary_end_result2, HOUGH_GRADIENT, 1, 20, param1=60, param2=20,
-    #                        minRadius=0, maxRadius=img_after.shape[0] / 4)
+    # binary_end_result1 = binary_dilation(binary_opening(binary_closing(binary_end_result1, iterations=1),
+    #                                                 iterations=4), iterations=4)  # first closing and second opening
+    binary_end_result2 = binary_dilation(binary_opening(binary_closing(binary_end_result2, iterations=1),
+                                                        iterations=4), iterations=4)  # first closing and second opening
+    print("something")
+    circles = None  # HoughCircles(binary_end_result2.astype('uint8'), HOUGH_GRADIENT_ALT, 1, 20, param1=4, param2=0.1,
+    # minRadius=0, maxRadius=int(binary_end_result2.shape[1] / 2))
+    # circles is in the format (x, y, r)
+    print("something")
+    if circles is not None:
+        print("there are {} circles detected".format(len(circles[0])))
+        binary_end_result2 = np.zeros(binary_end_result2.shape)
+        x_grid = np.arange(0, binary_end_result2.shape[1], 1)
+        y_grid = np.arange(0, binary_end_result2.shape[0], 1)
+        xy_grid = np.meshgrid(x_grid, y_grid)
+        for (x, y, r) in circles[0]:
+            circ = (xy_grid[1] - y) ** 2 + (xy_grid[0] - x) ** 2 <= r ** 2
+            binary_end_result2 = binary_end_result2 + circ
+    else:
+        print("there are no circles detected")
 
     masked_img[0, 0] = 1  # to give them the same color scale
     masked_img2[0, 0] = 1  # to give them the same color scale
@@ -335,8 +362,8 @@ for nnn in np.arange(15, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
     plt.show()
 
     del img_before, img_before_blurred, img_after, img_after_blurred, diff, mask, mask2, masked_img, masked_img2, \
-        binary_end_result1, binary_end_result2, meta_before, meta_after, index_mask, index_mask2, fig, ax, \
-        shift, plc, dx_pix, dy_pix, x_min, x_max, y_min, y_max
+        binary_end_result1, binary_end_result2, meta_after, index_mask, index_mask2, fig, ax, \
+        shift, plc, dx_pix, dy_pix, x_min, x_max, y_min, y_max  # meta_before
     gc.collect()
 
     print("Successful!\n")
