@@ -4,7 +4,7 @@ from odemis.dataio import tiff
 from scipy.ndimage.filters import gaussian_filter
 from scipy.ndimage import binary_erosion, binary_dilation, binary_opening, binary_closing
 from scipy.signal import fftconvolve
-from cv2 import HoughCircles, HOUGH_GRADIENT_ALT
+import cv2
 import gc
 from skimage import color  # , data
 from skimage.transform import hough_circle, hough_circle_peaks
@@ -79,7 +79,7 @@ manual_thr_out_after = np.zeros(l, dtype=int)
 manual_thr_out_before[:9] = np.array([300, 700, 3000, 300, 300, 300, 300, 200, 750])
 manual_thr_out_after[:9] = np.array([300, 700, 3000, 300, 300, 300, 300, 8000, 900])
 
-for nnn in np.arange(5, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+for nnn in np.arange(0, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
     print("dataset nr. {}".format(nnn + 1))
     print(data_paths_before[nnn])
 
@@ -326,44 +326,98 @@ for nnn in np.arange(5, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
     binary_end_result2 = binary_dilation(binary_opening(binary_closing(binary_end_result2, iterations=1),
                                                         iterations=4), iterations=4)  # first closing and second opening
     print("something")
-    circles = HoughCircles(binary_end_result2.astype('uint8'), HOUGH_GRADIENT_ALT, 1, 20, param1=4, param2=0.1,
-                           minRadius=0, maxRadius=int(binary_end_result2.shape[1] / 2))
-    # circles is in the format (x, y, r)
 
-    # Load picture and detect edges
-    image = img_as_ubyte(binary_end_result2)
-    edges = canny(image, sigma=0, low_threshold=0, high_threshold=10)
+    # here I start with trying to detect circles
+    im = np.array(binary_end_result2 * 255, dtype=np.uint8)  # cv2.cvtColor(binary_end_result2.astype('uint8'), cv2.COLOR_BGR2GRAY)
+    im = cv2.cvtColor(im, cv2.IMREAD_GRAYSCALE)
 
-    # Detect two radii
-    hough_radii = np.arange(5, int(binary_end_result2.shape[1] / 4), 5)
-    hough_res = hough_circle(edges, hough_radii)
+    params = cv2.SimpleBlobDetector_Params()
+    params.filterByColor = False
+    params.filterByConvexity = False
+    params.filterByCircularity = True
+    params.filterByArea = True
+    params.filterByInertia = True
+    params.minCircularity = 0.4
+    params.minArea = 6**2
+    params.minInertiaRatio = 0.5
+    # params.maxArea = binary_end_result2.shape[0] * binary_end_result2.shape[1] / 4
+    # print(binary_end_result2.shape[0] * binary_end_result2.shape[1] / 4)
+    ver = cv2.__version__.split('.')
+    if int(ver[0]) < 3:
+        detector = cv2.SimpleBlobDetector(params)
+    else:
+        detector = cv2.SimpleBlobDetector_create(params)
 
-    # Select the most prominent 3 circles
-    accums, cx, cy, radii = hough_circle_peaks(hough_res, hough_radii, total_num_peaks=10)
+    # detector = cv2.SimpleBlobDetector_create()
+    # im = cv2.bitwise_not(im)
+
+    key_points = detector.detect(im)
+    # im = cv2.bitwise_not(im)
+
+    cx = np.zeros(len(key_points), dtype=int)
+    cy = np.zeros(len(key_points), dtype=int)
+    rr = np.zeros(len(key_points), dtype=int)
+    for u in range(len(key_points)):
+        cx[u] = int(key_points[u].pt[0])
+        cy[u] = int(key_points[u].pt[1])
+        rr[u] = int(key_points[u].size / 2)  # the size is the diameter
 
     # Draw them
     fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(10, 4))
-    image = color.gray2rgb(img_as_ubyte(edges))
-    for center_y, center_x, radius in zip(cy, cx, radii):
+    image = color.gray2rgb(im)
+    for center_y, center_x, radius in zip(cy, cx, rr):
         circy, circx = circle_perimeter(center_y, center_x, radius,
                                         shape=image.shape)
-        image[circy, circx] = (220, 20, 20)
+        image[circy, circx] = (220, 20, 20, 255)
 
     ax.imshow(image, cmap=plt.cm.gray)
     plt.show()
 
-    print("something")
-    if circles is not None:
-        print("there are {} circles detected".format(len(circles[0])))
-        binary_end_result2 = np.zeros(binary_end_result2.shape)
-        x_grid = np.arange(0, binary_end_result2.shape[1], 1)
-        y_grid = np.arange(0, binary_end_result2.shape[0], 1)
-        xy_grid = np.meshgrid(x_grid, y_grid)
-        for (x, y, r) in circles[0]:
-            circ = (xy_grid[1] - y) ** 2 + (xy_grid[0] - x) ** 2 <= r ** 2
-            binary_end_result2 = binary_end_result2 + circ
-    else:
-        print("there are no circles detected")
+    # im_with_keypoints = cv2.drawKeypoints(im, key_points, np.array([]), (0, 0, 255),
+    #                                       cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+    # # Show keypoints
+    # cv2.imshow("Keypoints", im_with_keypoints)
+    # cv2.waitKey(0)
+    print("keypoints is done")
+
+    # circles = cv2.HoughCircles(binary_end_result2.astype('uint8'), cv2.HOUGH_GRADIENT_ALT, 1, 20, param1=1, param2=0.1,
+    #                            minRadius=0, maxRadius=int(binary_end_result2.shape[1] / 2))
+    # # circles is in the format (x, y, r)
+    #
+    # # Load picture and detect edges
+    # image = img_as_ubyte(binary_end_result2)
+    # edges = canny(image, sigma=0, low_threshold=0, high_threshold=10)
+    #
+    # # Detect two radii
+    # hough_radii = np.arange(5, int(binary_end_result2.shape[1] / 4), 5)
+    # hough_res = hough_circle(edges, hough_radii)
+    #
+    # # Select the most prominent 3 circles
+    # accums, cx, cy, radii = hough_circle_peaks(hough_res, hough_radii, total_num_peaks=10)
+    #
+    # # Draw them
+    # fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(10, 4))
+    # image = color.gray2rgb(img_as_ubyte(edges))
+    # for center_y, center_x, radius in zip(cy, cx, radii):
+    #     circy, circx = circle_perimeter(center_y, center_x, radius,
+    #                                     shape=image.shape)
+    #     image[circy, circx] = (220, 20, 20)
+    #
+    # ax.imshow(image, cmap=plt.cm.gray)
+    # plt.show()
+
+    # print("something")
+    # if circles is not None:
+    #     print("there are {} circles detected".format(len(circles[0])))
+    #     binary_end_result2 = np.zeros(binary_end_result2.shape)
+    #     x_grid = np.arange(0, binary_end_result2.shape[1], 1)
+    #     y_grid = np.arange(0, binary_end_result2.shape[0], 1)
+    #     xy_grid = np.meshgrid(x_grid, y_grid)
+    #     for (x, y, r) in circles[0]:
+    #         circ = (xy_grid[1] - y) ** 2 + (xy_grid[0] - x) ** 2 <= r ** 2
+    #         binary_end_result2 = binary_end_result2 + circ
+    # else:
+    #     print("there are no circles detected")
 
     masked_img[0, 0] = 1  # to give them the same color scale
     masked_img2[0, 0] = 1  # to give them the same color scale
@@ -396,7 +450,7 @@ for nnn in np.arange(5, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
 
     del img_before, img_before_blurred, img_after, img_after_blurred, diff, mask, mask2, masked_img, masked_img2, \
         binary_end_result1, binary_end_result2, meta_before, meta_after, index_mask, index_mask2, fig, ax, \
-        shift, plc, dx_pix, dy_pix, x_min, x_max, y_min, y_max, circles, image
+        shift, plc, dx_pix, dy_pix, x_min, x_max, y_min, y_max  # , circles, image
     gc.collect()
 
     print("Successful!\n")
