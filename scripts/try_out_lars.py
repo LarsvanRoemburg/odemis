@@ -11,6 +11,7 @@ from skimage.transform import hough_circle, hough_circle_peaks
 from skimage.feature import canny
 from skimage.draw import circle_perimeter
 from skimage.util import img_as_ubyte
+from copy import deepcopy
 
 # import analyse_shifts
 
@@ -79,7 +80,7 @@ manual_thr_out_after = np.zeros(l, dtype=int)
 manual_thr_out_before[:9] = np.array([300, 700, 3000, 300, 300, 300, 300, 200, 750])
 manual_thr_out_after[:9] = np.array([300, 700, 3000, 300, 300, 300, 300, 8000, 900])
 
-for nnn in np.arange(0, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+for nnn in np.arange(12, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
     print("dataset nr. {}".format(nnn + 1))
     print(data_paths_before[nnn])
 
@@ -277,11 +278,65 @@ for nnn in np.arange(0, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
     img_before[img_before < 0] = 0
     img_after[img_after < 0] = 0
 
+    # detecting two parallel lines
+    # the dip in this projection is where there is milled
+    projection = np.sum(img_after_blurred, axis=0)
+
+    # here I try line detection
+    image = deepcopy(img_after_blurred)
+    image = (image > 0.1)*0.1
+    # image[image > np.max(image) / 3] = np.max(image) / 3
+
+    image = img_as_ubyte(image)
+    plt.imshow(image)
+    edges = img_as_ubyte(canny(image, sigma=5, low_threshold=1, high_threshold=3))
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=1, minLineLength=img_after.shape[1] / 10,
+                            maxLineGap=img_after.shape[1] / 7.5)  # /7.5
+
+    # Iterate over points
+    if lines is not None:
+        print("{} lines detected.".format(len(lines)))
+        # look at the lines and see if they have the same angle and rough distance between them
+        angle_lines = np.zeros(lines.shape[0])
+        for i in range(lines.shape[0]):
+            angle_lines[i] = np.arctan((lines[i][0][3] - lines[i][0][1]) / (lines[i][0][2] - lines[i][0][0]))
+
+        diff_angles = np.zeros((lines.shape[0], lines.shape[0]), dtype=bool)
+        for i in range(lines.shape[0]):
+            for j in np.arange(i + 1, lines.shape[0], 1):
+                diff_angles[i, j] = np.abs(angle_lines[i] - angle_lines[j]) < np.pi/32
+                if diff_angles[i, j]:
+                    x1 = lines[i][0][2] / 2 + lines[i][0][0] / 2
+                    y1 = lines[i][0][3] / 2 + lines[i][0][1] / 2
+                    x2 = lines[j][0][2] / 2 + lines[j][0][0] / 2
+                    y2 = lines[j][0][3] / 2 + lines[j][0][1] / 2
+                    mean_angle = (angle_lines[i] + angle_lines[j]) / 2
+                    x3 = (y2 - y1 + np.tan(mean_angle + np.pi / 2 + 1e-10) * x1 - np.tan(mean_angle + 1e-10) * x2) / (
+                                np.tan(mean_angle + np.pi / 2 + 1e-10) - np.tan(mean_angle + 1e-10))
+                    y3 = np.tan(mean_angle + 1e-10) * (x3 - x2) + y2
+                    dist = np.sqrt((x3 - x1) ** 2 + (y3 - y1) ** 2)
+                    if not ((dist < img_after.shape[0]/5) & (dist > img_after.shape[0]/10)):
+                        diff_angles[i, j] = False
+
+        close_angles = np.where(diff_angles)
+        # line_image = deepcopy(image/10)
+        for points in lines[np.unique(close_angles)]:
+            # Extracted points nested in the list
+            x1, y1, x2, y2 = points[0]
+            # Draw the lines joing the points
+            # On the original image
+            cv2.line(image, (x1, y1), (x2, y2), (255), 2)
+            # Maintain a simples lookup list for points
+            # lines_list.append([(x1, y1), (x2, y2)])
+        plt.imshow(image)
+    else:
+        print("No lines are detected")
+
     # calculating the difference between the two images and creating a mask
     diff = img_before_blurred - 1.5 * img_after_blurred  # times 1.5 to account for intensity differences (more robust)
     mask = diff >= threshold_mask
     mask2 = binary_opening(mask, iterations=int(blur / 2))  # First opening
-    mask2 = binary_erosion(mask2, iterations=5)  # if the edges give too much signal we can erode the mask a bit more
+    # mask2 = binary_erosion(mask2, iterations=5)  # if the edges give too much signal we can erode the mask a bit more
 
     # to crop and/or square the image around the ROI if possible and wanted: cropping = True and/or squaring = True
     index_mask = np.where(mask)
@@ -328,7 +383,8 @@ for nnn in np.arange(0, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
     print("something")
 
     # here I start with trying to detect circles
-    im = np.array(binary_end_result2 * 255, dtype=np.uint8)  # cv2.cvtColor(binary_end_result2.astype('uint8'), cv2.COLOR_BGR2GRAY)
+    im = np.array(binary_end_result2 * 255,
+                  dtype=np.uint8)  # cv2.cvtColor(binary_end_result2.astype('uint8'), cv2.COLOR_BGR2GRAY)
     im = cv2.cvtColor(im, cv2.IMREAD_GRAYSCALE)
 
     params = cv2.SimpleBlobDetector_Params()
@@ -338,7 +394,7 @@ for nnn in np.arange(0, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
     params.filterByArea = True
     params.filterByInertia = True
     params.minCircularity = 0.4
-    params.minArea = 6**2
+    params.minArea = 6 ** 2
     params.minInertiaRatio = 0.5
     # params.maxArea = binary_end_result2.shape[0] * binary_end_result2.shape[1] / 4
     # print(binary_end_result2.shape[0] * binary_end_result2.shape[1] / 4)
@@ -364,13 +420,12 @@ for nnn in np.arange(0, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
 
     # Draw them
     fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(10, 4))
-    image = color.gray2rgb(im)
     for center_y, center_x, radius in zip(cy, cx, rr):
         circy, circx = circle_perimeter(center_y, center_x, radius,
                                         shape=image.shape)
-        image[circy, circx] = (220, 20, 20, 255)
+        im[circy, circx] = (220, 20, 20, 255)
 
-    ax.imshow(image, cmap=plt.cm.gray)
+    ax.imshow(im, cmap=plt.cm.gray)
     plt.show()
 
     # im_with_keypoints = cv2.drawKeypoints(im, key_points, np.array([]), (0, 0, 255),
