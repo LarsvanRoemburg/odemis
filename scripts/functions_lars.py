@@ -1,17 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from odemis.dataio import tiff
 from scipy.ndimage.filters import gaussian_filter
-from scipy.ndimage import binary_erosion, binary_dilation, binary_opening, binary_closing
+from scipy.ndimage import binary_opening, binary_closing  # , binary_erosion, binary_dilation
 from scipy.signal import fftconvolve
-import cv2
-import gc
-from skimage import color  # , data
-from skimage.transform import hough_circle, hough_circle_peaks
-from skimage.feature import canny
 from skimage.draw import circle_perimeter
-from skimage.util import img_as_ubyte
-from copy import deepcopy
+import cv2
 
 
 def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, mode='max'):
@@ -107,7 +100,7 @@ def overlay(img_before, img_after, max_shift=5):
     img_after = img_after - mean_after
     conv = fftconvolve(img_before, img_after[::-1, ::-1], mode='same')
 
-    if (int(conv.shape[0] / max_shift) > 0) & max_shift > 1:  # constraints
+    if (int(conv.shape[0] / max_shift) > 0) & (max_shift > 1):  # constraints
         conv[:int(conv.shape[0] / max_shift), :] = 0
         conv[-int(conv.shape[0] / max_shift):, :] = 0
         conv[:, :int(conv.shape[1] / max_shift)] = 0
@@ -267,7 +260,7 @@ def detect_blobs(binary_end_result2, min_circ=0, max_circ=1, min_area=0, max_are
     # Draw them
     if plotting:
         fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(10, 4))
-        for center_y, center_x, radius in zip(cy, cx, rr):
+        for center_y, center_x, radius in zip(yxr[:, 0], yxr[:, 1], yxr[:, 2]):
             circy, circx = circle_perimeter(center_y, center_x, radius,
                                             shape=im.shape)
             im[circy, circx] = (220, 20, 20, 255)
