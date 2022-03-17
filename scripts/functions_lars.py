@@ -251,7 +251,7 @@ def detect_blobs(binary_end_result2, min_circ=0, max_circ=1, min_area=0, max_are
 
     key_points = detector.detect(im)
 
-    yxr = np.zeros((len(key_points), 3))
+    yxr = np.zeros((len(key_points), 3), dtype=int)
     for u in range(len(key_points)):
         yxr[u, 1] = int(key_points[u].pt[0])
         yxr[u, 0] = int(key_points[u].pt[1])
