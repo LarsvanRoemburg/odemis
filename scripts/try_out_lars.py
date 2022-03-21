@@ -71,7 +71,7 @@ max_slices = 40
 cropping = True  # if true, the last images will be cropped to only the mask
 squaring = True  # if true, the mask will be altered to be a square
 
-for nnn in np.arange(14, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+for nnn in np.arange(16, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
     print("dataset nr. {}".format(nnn + 1))
     print(data_paths_before[nnn])
 
@@ -128,10 +128,10 @@ for nnn in np.arange(14, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
     # image[image < np.max(image)*4/5] = 0  # 4/5
     # plt.imshow(image)
     edges = img_as_ubyte(canny(image, sigma=10, low_threshold=0.1, high_threshold=2.5))  # 10, 0.1, 2.5
-    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=1, minLineLength=img_after.shape[1] / 30,
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=1, minLineLength=img_after.shape[1] / 45,
                             maxLineGap=img_after.shape[1] / 40)  # np.pi/180, 1, /30, /40
-    x_lines = (lines.T[2]/2+lines.T[0]/2).T.reshape((len(lines),))  # the middle points of the line
-    y_lines = (lines.T[3]/2+lines.T[1]/2).T.reshape((len(lines),))
+    x_lines = (lines.T[2] / 2 + lines.T[0] / 2).T.reshape((len(lines),))  # the middle points of the line
+    y_lines = (lines.T[3] / 2 + lines.T[1] / 2).T.reshape((len(lines),))
 
     image = image * 0.8
     # Iterate over points
@@ -142,38 +142,94 @@ for nnn in np.arange(14, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
         for i in range(lines.shape[0]):
             if lines[i][0][2] != lines[i][0][0]:
                 angle_lines[i] = np.arctan((lines[i][0][3] - lines[i][0][1]) / (lines[i][0][2] - lines[i][0][0]))
+                if angle_lines[i] < 0:
+                    angle_lines[i] = angle_lines[i] + np.pi
             else:
-                angle_lines[i] = np.pi/2
+                angle_lines[i] = np.pi / 2
+
+        lines2 = deepcopy(lines)
+        angle_lines2 = deepcopy(angle_lines)
+        x_lines2 = deepcopy(x_lines)
+        y_lines2 = deepcopy(y_lines)
+        num_lines_present = np.ones(lines.shape[0])
+        for i in range(lines2.shape[0]):
+            for j in range(lines2.shape[0]):
+                if (i != j) & (num_lines_present[i] >= 1) & (num_lines_present[j] >= 1):
+                    dist = np.sqrt((x_lines2[i] - x_lines2[j]) ** 2 + (y_lines2[i] - y_lines2[j]) ** 2)
+                    diff_angle = np.abs(angle_lines2[i] - angle_lines2[j])
+                    if (dist <= img_after.shape[0] / 30) & (diff_angle <= np.pi / 12):
+                        if i < j:
+                            lines2[i][0][0] = (lines2[i][0][0] * num_lines_present[i] + lines2[j][0][0] *
+                                               num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            lines2[i][0][1] = (lines2[i][0][1] * num_lines_present[i] + lines2[j][0][1] *
+                                               num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            lines2[i][0][2] = (lines2[i][0][2] * num_lines_present[i] + lines2[j][0][2] *
+                                               num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            lines2[i][0][3] = (lines2[i][0][3] * num_lines_present[i] + lines2[j][0][3] *
+                                               num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            angle_lines2[i] = (angle_lines2[i] * num_lines_present[i]
+                                               + angle_lines2[j] * num_lines_present[j]) /\
+                                              (num_lines_present[i] + num_lines_present[j])
+                            x_lines2[i] = (x_lines2[i]*num_lines_present[i] + x_lines2[j]*num_lines_present[j]) /\
+                                          (num_lines_present[i] + num_lines_present[j])
+                            y_lines2[i] = (y_lines2[i]*num_lines_present[i] + y_lines2[j]*num_lines_present[j]) /\
+                                          (num_lines_present[i] + num_lines_present[j])
+                            num_lines_present[i] = num_lines_present[i] + num_lines_present[j]
+                            num_lines_present[j] = 0
+                        else:
+                            lines2[j][0][0] = (lines2[i][0][0] * num_lines_present[i] + lines2[j][0][0] *
+                                               num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            lines2[j][0][1] = (lines2[i][0][1] * num_lines_present[i] + lines2[j][0][1] *
+                                               num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            lines2[j][0][2] = (lines2[i][0][2] * num_lines_present[i] + lines2[j][0][2] *
+                                               num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            lines2[j][0][3] = (lines2[i][0][3] * num_lines_present[i] + lines2[j][0][3] *
+                                               num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            angle_lines2[j] = (angle_lines2[i] * num_lines_present[i]
+                                               + angle_lines2[j] * num_lines_present[j]) /\
+                                              (num_lines_present[i] + num_lines_present[j])
+                            x_lines2[j] = (x_lines2[i]*num_lines_present[i] + x_lines2[j]*num_lines_present[j]) /\
+                                          (num_lines_present[i] + num_lines_present[j])
+                            y_lines2[j] = (y_lines2[i]*num_lines_present[i] + y_lines2[j]*num_lines_present[j]) /\
+                                          (num_lines_present[i] + num_lines_present[j])
+                            num_lines_present[j] = num_lines_present[i] + num_lines_present[j]
+                            num_lines_present[i] = 0
+        lines2 = lines2[num_lines_present > 0]
+        x_lines2 = x_lines2[num_lines_present > 0]
+        y_lines2 = y_lines2[num_lines_present > 0]
+        angle_lines2 = angle_lines2[num_lines_present > 0]
+        lines = lines2
+        x_lines = x_lines2
+        y_lines = y_lines2
+        angle_lines = angle_lines2
 
         diff_angles = np.zeros((lines.shape[0], lines.shape[0]), dtype=bool)
         print("mid_milling_site = {}".format(mid_milling_site))
-        print("lower x boundary = {}".format(mid_milling_site - img_after.shape[1]/6))
-        print("upper x boundary = {}".format(mid_milling_site + img_after.shape[1]/6))
+        print("lower x boundary = {}".format(mid_milling_site - img_after.shape[1] / 8))
+        print("upper x boundary = {}".format(mid_milling_site + img_after.shape[1] / 8))
         for i in range(lines.shape[0]):
             for j in np.arange(i + 1, lines.shape[0], 1):
                 # print(angle_lines[i] - angle_lines[j])
-                if (np.abs(angle_lines[i] - angle_lines[j]) < np.pi/6) | \
-                        (np.abs(angle_lines[i] - angle_lines[j]) > np.pi*5/6):
+                if np.abs(angle_lines[i] - angle_lines[j]) < np.pi / 8:
                     # print("angle < np.pi/6 | angle > np.pi*5/6 is true")
                     x1 = x_lines[i]
                     y1 = y_lines[i]
                     x2 = x_lines[j]
                     y2 = y_lines[j]
-                    # diff_angles[i, j] = True
 
-                    if (x1 > (mid_milling_site - img_after.shape[1]/8)) & \
-                            (x1 < (mid_milling_site + img_after.shape[1]/8)) & \
-                            (x2 > (mid_milling_site - img_after.shape[1]/8)) & \
-                            (x2 < (mid_milling_site + img_after.shape[1]/8)) & \
-                            (y1 > img_after.shape[0]/8) & (y1 < img_after.shape[0]*7/8) & \
-                            (y2 > img_after.shape[0]/8) & (y2 < img_after.shape[0]*7/8):
+                    if (x1 > (mid_milling_site - img_after.shape[1] / 8)) & \
+                            (x1 < (mid_milling_site + img_after.shape[1] / 8)) & \
+                            (x2 > (mid_milling_site - img_after.shape[1] / 8)) & \
+                            (x2 < (mid_milling_site + img_after.shape[1] / 8)) & \
+                            (y1 > img_after.shape[0] / 8) & (y1 < img_after.shape[0] * 7 / 8) & \
+                            (y2 > img_after.shape[0] / 8) & (y2 < img_after.shape[0] * 7 / 8):
                         angle_mean = (angle_lines[i] + angle_lines[j]) / 2
-                        x3 = (y2 - y1 + np.tan(angle_mean + np.pi / 2 + 1e-10) * x1 - np.tan(angle_mean + 1e-10) * x2) \
-                            / (np.tan(angle_mean + np.pi / 2 + 1e-10) - np.tan(angle_mean + 1e-10))
+                        x3 = (y2 - y1 + np.tan(angle_mean + np.pi / 2 + 1e-10) * x1 - np.tan(angle_mean + 1e-10) * x2) /\
+                             (np.tan(angle_mean + np.pi / 2 + 1e-10) - np.tan(angle_mean + 1e-10))
                         y3 = np.tan(angle_mean + 1e-10) * (x3 - x2) + y2
                         dist = np.sqrt((x3 - x1) ** 2 + (y3 - y1) ** 2)
                         # print("distance measured = {}".format(dist))
-                        if (dist < img_after.shape[1] / 4) & (dist > img_after.shape[1] / 30):  # /4, /20
+                        if (dist < img_after.shape[1] / 5) & (dist > img_after.shape[1] / 20):  # /4, /20
                             diff_angles[i, j] = True
                             # print("pair is added")
         print("minimal distance = {}".format(img_after.shape[1] / 20))
@@ -225,28 +281,26 @@ for nnn in np.arange(14, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
         #                 groups_combined[i, j] = True
 
         for i in range(len(lin1)):
+            print("{}% done".format(i / len(lin1) * 100))
             set_in_group = False
-            x1 = (x_lines[lin1[i]]+x_lines[lin2[i]])/2
-            y1 = (y_lines[lin1[i]]+y_lines[lin2[i]])/2
-            angle = (angle_lines[lin1[i]] + angle_lines[lin2[i]])/2
+            x1 = (x_lines[lin1[i]] + x_lines[lin2[i]]) / 2
+            y1 = (y_lines[lin1[i]] + y_lines[lin2[i]]) / 2
+            angle = (angle_lines[lin1[i]] + angle_lines[lin2[i]]) / 2
             for j in range(len(groups)):
-                angle_mean = np.mean(angle_lines[groups[j]])  # this goes wrong in -> pi/2 or -pi/2!
+                angle_mean = np.mean(angle_lines[groups[j]])
                 x2 = np.mean(x_lines[groups[j]])
                 y2 = np.mean(y_lines[groups[j]])
-                if (np.abs(angle - angle_mean) <= np.pi/6) | (np.abs(angle - angle_mean) >= np.pi*5/6):
+                if np.abs(angle - angle_mean) <= np.pi / 8:
                     x3 = (y2 - y1 + np.tan(angle_mean + np.pi / 2 + 1e-10) * x1 - np.tan(angle_mean + 1e-10) * x2) \
                          / (np.tan(angle_mean + np.pi / 2 + 1e-10) - np.tan(angle_mean + 1e-10))
                     y3 = np.tan(angle_mean + 1e-10) * (x3 - x2) + y2
                     dist = np.sqrt((x3 - x1) ** 2 + (y3 - y1) ** 2)
-                    if dist <= img_after.shape[1]/20:
+                    if dist <= img_after.shape[1] / 30:
                         set_in_group = True
                         groups[j].append(lin1[i])
                         groups[j].append(lin2[i])
             if not set_in_group:
                 groups.append([lin1[i], lin2[i]])
-
-        for i in range(len(groups)):
-            groups[i] = np.unique(groups[i])
 
         # for i in range(len(close_angles[0])):
         #     lin1_in_group = False
@@ -307,6 +361,11 @@ for nnn in np.arange(14, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
         for i in range(len(groups)):
             if len(groups[i]) > len(groups[biggest]):
                 biggest = i
+
+        for i in range(len(groups)):
+            groups[i] = np.unique(groups[i])
+
+        image1 = deepcopy(image)
         image2 = deepcopy(image)
         image3 = deepcopy(image)
 
@@ -341,16 +400,28 @@ for nnn in np.arange(14, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
             cv2.line(image, (x1, y1), (x2, y2), 255, 2)
             # Maintain a simples lookup list for points
             # lines_list.append([(x1, y1), (x2, y2)])
+        for points in lines2:
+            # Extracted points nested in the list
+            x1, y1, x2, y2 = points[0]
+            # Draw the lines joining the points
+            # On the original image
+            cv2.line(image1, (x1, y1), (x2, y2), 255, 2)
+            # Maintain a simples lookup list for points
+            # lines_list.append([(x1, y1), (x2, y2)])
 
-        fig, ax = plt.subplots(ncols=2, nrows=2)
-        ax[0, 0].imshow(edges+img_after*255)
-        ax[0, 0].set_title('the edges at img_after')
-        ax[0, 1].imshow(image)
-        ax[0, 1].set_title('all lines')
+        fig, ax = plt.subplots(ncols=2, nrows=3)
+        ax[0, 0].imshow(img_after)
+        ax[0, 0].set_title('img_after')
+        ax[0, 1].imshow(edges)
+        ax[0, 1].set_title('the edges')
         ax[1, 0].imshow(image2)
         ax[1, 0].set_title('after selection')
         ax[1, 1].imshow(image3)
         ax[1, 1].set_title('after grouping')
+        ax[2, 1].imshow(image1)
+        ax[2, 1].set_title('similar lines combined')
+        ax[2, 0].imshow(image)
+        ax[2, 0].set_title('all the lines')
 
         plt.show()
     else:
@@ -369,15 +440,15 @@ for nnn in np.arange(14, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
     # print("binary image made")
     #
     # # here I start with trying to detect circles
-    # key_points, yxr = detect_blobs(binary_end_result2, min_circ=0.4, min_area=8**2, plotting=True)
+    # key_points, yxr = detect_blobs(binary_end_result2, min_circ=0.6, min_area=8**2, plotting=True)
     #
     # print("circle detection complete")
     #
     # plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img, masked_img2,
     #                  binary_end_result1, binary_end_result2, cropping, extents, extents2)
-    #
-    # del img_before, img_before_blurred, img_after, img_after_blurred, edges, image, diff_angles, \
-    #     lines, mask, mask2, masked_img, masked_img2, binary_end_result1, binary_end_result2, meta_before, meta_after
-    # gc.collect()
+
+    del img_before, img_before_blurred, img_after, img_after_blurred, edges, image, diff_angles, \
+        lines  # , mask, mask2, masked_img, masked_img2, binary_end_result1, binary_end_result2, meta_before, meta_after
+    gc.collect()
 
     print("Successful!\n")
