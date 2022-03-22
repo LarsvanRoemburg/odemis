@@ -274,6 +274,20 @@ def detect_blobs(binary_end_result2, min_circ=0, max_circ=1, min_area=0, max_are
 def plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img, masked_img2,
                      binary_end_result1, binary_end_result2, cropping, extents, extents2):
     # plotting the results
+    x_min = extents2[0]
+    x_max = extents2[1]
+    y_min = extents2[3]
+    y_max = extents2[2]
+    ints_before = np.max(img_before_blurred)*1.1
+    ints_after = np.max(img_after_blurred)*1.1
+    cv2.line(img_before_blurred, (x_min, y_min), (x_max, y_min), ints_before, 5)
+    cv2.line(img_before_blurred, (x_max, y_min), (x_max, y_max), ints_before, 5)
+    cv2.line(img_before_blurred, (x_min, y_max), (x_max, y_max), ints_before, 5)
+    cv2.line(img_before_blurred, (x_min, y_min), (x_min, y_max), ints_before, 5)
+    cv2.line(img_after_blurred, (x_min, y_min), (x_max, y_min), ints_after, 5)
+    cv2.line(img_after_blurred, (x_max, y_min), (x_max, y_max), ints_after, 5)
+    cv2.line(img_after_blurred, (x_min, y_max), (x_max, y_max), ints_after, 5)
+    cv2.line(img_after_blurred, (x_min, y_min), (x_min, y_max), ints_after, 5)
     fig, ax = plt.subplots(4, 2)
     ax[0, 0].imshow(img_before)
     ax[0, 0].set_title("before")
