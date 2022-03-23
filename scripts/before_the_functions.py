@@ -507,3 +507,148 @@ for nnn in np.arange(17, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
     gc.collect()
 
     print("Successful!\n")
+
+# other approaches I tried for finding the correct lines
+
+# for i in range(lines2.shape[0]):
+#     for j in np.arange(i + 1, lines2.shape[0], 1):
+#         # print(angle_lines[i] - angle_lines[j])
+#         if np.abs(angle_lines2[i] - angle_lines2[j]) < np.pi / 16:
+#             x1 = x_lines2[i]
+#             y1 = y_lines2[i]
+#             x2 = x_lines2[j]
+#             y2 = y_lines2[j]
+#             # print("angle < np.pi/6 | angle > np.pi*5/6 is true")
+#             angle_mean = (angle_lines2[i] + angle_lines2[j]) / 2
+#             x3 = (y2 - y1 + np.tan(angle_mean + np.pi / 2 + 1e-10) * x1 - np.tan(angle_mean + 1e-10) * x2) / \
+#                  (np.tan(angle_mean + np.pi / 2 + 1e-10) - np.tan(angle_mean + 1e-10))
+#             y3 = np.tan(angle_mean + 1e-10) * (x3 - x2) + y2
+#             dist = np.sqrt((x3 - x1) ** 2 + (y3 - y1) ** 2)
+#             # print("distance measured = {}".format(dist))
+#             if (dist < img_after.shape[1] / 5) & (dist < img_after.shape[1] / 40):  # </5, >/20
+#                 diff_angles[i, j] = True
+#                 # print("pair is added")
+# print("minimal distance = {}".format(img_after.shape[1] / 20))
+# print("maximal distance = {}".format(img_after.shape[1] / 40))
+# close_angles = np.where(diff_angles)
+# print("{} lines after selection".format(len(np.unique(close_angles))))
+# lin1 = close_angles[0]  # the "left" line of the pair
+# lin2 = close_angles[1]  # the "right" line of the pair
+
+# for i in range(len(lin1)):
+#     set_in_group = False
+#     x1 = x_lines[lin1[i]]
+#     y1 = y_lines[lin1[i]]
+#     angle = angle_lines[lin1[i]]
+#     for j in range(len(groups)):
+#         angle_mean = np.mean(angle_lines[groups[j]])
+#         x2 = np.mean(x_lines[groups[j]])
+#         y2 = np.mean(y_lines[groups[j]])
+#         if np.abs(angle - angle_mean) <= np.pi/6:
+#             x3 = (y2 - y1 + np.tan(angle_mean + np.pi / 2 + 1e-10) * x1 - np.tan(angle_mean + 1e-10) * x2) \
+#                  / (np.tan(angle_mean + np.pi / 2 + 1e-10) - np.tan(angle_mean + 1e-10))
+#             y3 = np.tan(angle_mean + 1e-10) * (x3 - x2) + y2
+#             dist = np.sqrt((x3 - x1) ** 2 + (y3 - y1) ** 2)
+#             if dist <= img_after.shape[1]/20:
+#                 set_in_group = True
+#                 groups[j].append(lin1[i])
+#     if not set_in_group:
+#         groups.append([lin1[i]])
+#
+# for i in range(len(groups)):
+#     groups[i] = np.unique(groups[i])
+# groups_combined = np.zeros((len(groups), len(groups)), dtype=bool)
+#
+# for i in range(len(groups)):
+#     for j in np.arange(i+1, len(groups), 1):
+#         x1 = np.mean(x_lines[groups[i]])
+#         y1 = np.mean(y_lines[groups[i]])
+#         x2 = np.mean(x_lines[groups[j]])
+#         y2 = np.mean(y_lines[groups[j]])
+#         angle_1 = np.mean(angle_lines[groups[i]])
+#         angle_2 = np.mean(angle_lines[groups[j]])
+#         if np.abs(angle - angle_2) <= np.pi/6:
+#             x3 = (y2 - y1 + np.tan(angle_2 + np.pi / 2 + 1e-10) * x1 - np.tan(angle_2 + 1e-10) * x2) \
+#                  / (np.tan(angle_2 + np.pi / 2 + 1e-10) - np.tan(angle_2 + 1e-10))
+#             y3 = np.tan(angle_2 + 1e-10) * (x3 - x2) + y2
+#             dist = np.sqrt((x3 - x1) ** 2 + (y3 - y1) ** 2)
+#             if (dist > img_after.shape[1]/20) & (dist < img_after.shape[1]/4):
+#                 groups_combined[i, j] = True
+
+# for i in range(len(lin1)):
+#     print("{}% done".format(i / len(lin1) * 100))
+#     set_in_group = False
+#     x1 = (x_lines2[lin1[i]] + x_lines2[lin2[i]]) / 2
+#     y1 = (y_lines2[lin1[i]] + y_lines2[lin2[i]]) / 2
+#     angle = (angle_lines2[lin1[i]] + angle_lines2[lin2[i]]) / 2
+#     for j in range(len(groups)):
+#         angle_mean = np.mean(angle_lines2[groups[j]])
+#         x2 = np.mean(x_lines2[groups[j]])
+#         y2 = np.mean(y_lines2[groups[j]])
+#         if np.abs(angle - angle_mean) <= np.pi / 16:
+#             x3 = (y2 - y1 + np.tan(angle_mean + np.pi / 2 + 1e-10) * x1 - np.tan(angle_mean + 1e-10) * x2) \
+#                  / (np.tan(angle_mean + np.pi / 2 + 1e-10) - np.tan(angle_mean + 1e-10))
+#             y3 = np.tan(angle_mean + 1e-10) * (x3 - x2) + y2
+#             dist = np.sqrt((x3 - x1) ** 2 + (y3 - y1) ** 2)
+#             if dist <= img_after.shape[1] / 40:
+#                 set_in_group = True
+#                 groups[j].append(lin1[i])
+#                 groups[j].append(lin2[i])
+#     if not set_in_group:
+#         groups.append([lin1[i], lin2[i]])
+
+# for i in range(len(close_angles[0])):
+#     lin1_in_group = False
+#     lin2_in_group = False
+#     lin1_where = 0.1
+#     lin2_where = 0.1
+#     for j in range(len(groups)):
+#         if lin1[i] in groups[j]:
+#             lin1_in_group = True
+#             lin1_where = j
+#         if lin2[i] in groups[j]:
+#             lin2_in_group = True
+#             lin2_where = j
+#     if not lin1_in_group and not lin2_in_group:
+#         groups.append([lin1[i], lin2[i]])
+#     if lin1_in_group and not lin2_in_group:
+#         angle_mean = np.mean(angle_lines[groups[lin1_where]])
+#         if np.abs(angle_lines[lin2[i]]-angle_mean) <= np.pi/8:
+#             groups[lin1_where].append(lin2[i])
+#         else:
+#             placed_in_group = False
+#             for k in range(len(groups)):
+#                 angle_mean = np.mean(angle_lines[groups[k]])
+#
+#                 if np.abs(angle_lines[lin2[i]] - angle_mean) <= np.pi / 8:
+#                     groups[k].append(lin2[i])
+#                     placed_in_group = True
+#             if not placed_in_group:
+#                 groups.append([lin2[i]])
+#     if lin2_in_group and not lin1_in_group:
+#         angle_mean = np.mean(angle_lines[groups[lin2_where]])
+#         if np.abs(angle_lines[lin1[i]]-angle_mean) <= np.pi/8:
+#             groups[lin2_where].append(lin1[i])
+#         else:
+#             placed_in_group = False
+#             for k in range(len(groups)):
+#                 angle_mean = np.mean(angle_lines[groups[k]])
+#                 if np.abs(angle_lines[lin1[i]] - angle_mean) <= np.pi / 8:
+#                     groups[k].append(lin1[i])
+#                     placed_in_group = True
+#             if not placed_in_group:
+#                 groups.append([lin1[i]])
+#     if lin1_in_group and lin2_in_group and lin1_where != lin2_where:
+#         angle_mean_1 = np.mean(angle_lines[groups[lin1_where]])
+#         angle_mean_2 = np.mean(angle_lines[groups[lin2_where]])
+#         if np.abs(angle_mean_1-angle_mean_2) <= np.pi / 8:
+#             if lin1_where < lin2_where:
+#                 for j in range(len(groups[lin2_where])):
+#                     groups[lin1_where].append(groups[lin2_where][j])
+#                 groups.remove(groups[lin2_where])
+#             if lin1_where > lin2_where:
+#                 for j in range(len(groups[lin1_where])):
+#                     groups[lin2_where].append(groups[lin1_where][j])
+#                 groups.remove(groups[lin1_where])
+
+# print('successful!')
