@@ -11,6 +11,25 @@ import cv2
 
 
 def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, mode='max'):
+
+    """
+    Converts the Odemis data into an image for further use in the automatic ROI detection.
+    z-stacks get projected into a single image with a maximum number of slices used.
+    Outliers in the image are cut off by looking at the intensity histogram of the image.
+
+    Parameters:
+        data (list):            The raw imaging data that needs to be converted, can be a z-stack or single image.
+        max_slices (int):       The maximum number of slices used in the z-projection.
+                                It is always centered around the slice in the middle of the z-stack.
+        which_channel (int):    If there are multiple channels in the data, you can specify which you need.
+        mode (string):          To indicate which method to use with the z-projection, two options:
+                                    'max': maximum intensity projection
+                                    'mean': average intensity projection
+
+    Returns:
+        img (ndarray): the image returned as a numpy array
+    """
+
     if data[0].shape[0] == 1:
         num_z = len(data[which_channel][0][0])
         print("#z-slices: {}".format(num_z))
@@ -32,7 +51,7 @@ def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, mode='max
         elif mode == 'mean':
             img = np.mean(img, axis=0)
         else:
-            print("mode input not recognized, maximum intensity projection is used.")
+            raise Warning("mode input not recognized, maximum intensity projection is used.")
             img = np.max(img, axis=0)
 
     else:
@@ -51,48 +70,64 @@ def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, mode='max
 
 
 def rescaling(img_before, img_after):
-    if img_after.shape != img_before.shape:
-        if img_after.shape > img_before.shape:
-            img_rescaled = np.zeros(img_after.shape)
-            d_pix = img_before.shape[0] / img_after.shape[0]  # here we assume that the difference in x is the same
-            # as in y as pixels are squares
-            for i in range(img_before.shape[0]):
-                x_vals = np.arange(0, len(img_before[i, :]), 1)
-                y_vals = img_before[i, :]
-                x_new = np.arange(0, len(img_before[i, :]), d_pix)
-                y_new = np.interp(x_new, x_vals, y_vals)
-                img_rescaled[i, :] = y_new
 
-            for i in range(img_rescaled.shape[1]):
-                y_vals = np.arange(0, len(img_before[:, 0]), 1)
-                x_vals = img_rescaled[:img_before.shape[0], i]
-                y_new = np.arange(0, len(img_before[:, 0]), d_pix)
-                x_new = np.interp(y_new, y_vals, x_vals)
-                img_rescaled[:, i] = x_new
-            # img_before = img_rescaled
-            return img_rescaled, img_after
+    """
+    To rescale a smaller image (k x l) to a bigger image (m x n).
+    The dimension of the smaller image goes from (k x l) to (m x n).
+    If they are of the same size, nothing happens and the input is returned.
 
-        else:  # copied the code but then for the images swapped, this is better memory wise (I think)
-            img_rescaled = np.zeros(img_before.shape)
-            d_pix = img_after.shape[0] / img_before.shape[0]  # here we assume that the difference in x is the same
-            # as in y as pixels are squares
-            for i in range(img_after.shape[0]):
-                x_vals = np.arange(0, len(img_after[i, :]), 1)
-                y_vals = img_after[i, :]
-                x_new = np.arange(0, len(img_after[i, :]), d_pix)
-                y_new = np.interp(x_new, x_vals, y_vals)
-                img_rescaled[i, :] = y_new
+    Parameters:
+        img_before (ndarray):   The first image to compare.
+        img_after (ndarray):    The second image to compare.
 
-            for i in range(img_rescaled.shape[1]):
-                y_vals = np.arange(0, len(img_after[:, 0]), 1)
-                x_vals = img_rescaled[:img_after.shape[0], i]
-                y_new = np.arange(0, len(img_after[:, 0]), d_pix)
-                x_new = np.interp(y_new, y_vals, x_vals)
-                img_rescaled[:, i] = x_new
-            # img_after = img_rescaled
-            return img_before, img_rescaled
-    else:
+    Returns:
+        img_before (ndarray):   If it was the smaller image, the rescaled image, otherwise the same as the input image.
+        img_after (ndarray):    If it was the smaller image, the rescaled image, otherwise the same as the input image.
+    """
+
+    if img_after.shape == img_before.shape:
         return img_before, img_after
+
+    if img_after.shape > img_before.shape:
+        img_rescaled = np.zeros(img_after.shape)
+        d_pix = img_before.shape[0] / img_after.shape[0]  # here we assume that the difference in x is the same
+        # as in y as pixels are squares
+        for i in range(img_before.shape[0]):
+            x_vals = np.arange(0, len(img_before[i, :]), 1)
+            y_vals = img_before[i, :]
+            x_new = np.arange(0, len(img_before[i, :]), d_pix)
+            y_new = np.interp(x_new, x_vals, y_vals)
+            img_rescaled[i, :] = y_new
+
+        for i in range(img_rescaled.shape[1]):
+            y_vals = np.arange(0, len(img_before[:, 0]), 1)
+            x_vals = img_rescaled[:img_before.shape[0], i]
+            y_new = np.arange(0, len(img_before[:, 0]), d_pix)
+            x_new = np.interp(y_new, y_vals, x_vals)
+            img_rescaled[:, i] = x_new
+        # img_before = img_rescaled
+        return img_rescaled, img_after
+
+    # not necessary anymore to have it copied! change it later.
+    else:  # copied the code but then for the images swapped, this is better memory wise (I think):
+        img_rescaled = np.zeros(img_before.shape)
+        d_pix = img_after.shape[0] / img_before.shape[0]  # here we assume that the difference in x is the same
+        # as in y as pixels are squares
+        for i in range(img_after.shape[0]):
+            x_vals = np.arange(0, len(img_after[i, :]), 1)
+            y_vals = img_after[i, :]
+            x_new = np.arange(0, len(img_after[i, :]), d_pix)
+            y_new = np.interp(x_new, x_vals, y_vals)
+            img_rescaled[i, :] = y_new
+
+        for i in range(img_rescaled.shape[1]):
+            y_vals = np.arange(0, len(img_after[:, 0]), 1)
+            x_vals = img_rescaled[:img_after.shape[0], i]
+            y_new = np.arange(0, len(img_after[:, 0]), d_pix)
+            x_new = np.interp(y_new, y_vals, x_vals)
+            img_rescaled[:, i] = x_new
+        # img_after = img_rescaled
+        return img_before, img_rescaled
 
 
 def overlay(img_before, img_after, max_shift=5):

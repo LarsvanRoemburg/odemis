@@ -65,7 +65,6 @@ threshold_end = 0.25
 blur = 25
 max_slices = 40
 cropping = True  # if true, the last images will be cropped to only the mask
-squaring = True  # if true, the mask will be altered to be a square
 
 for nnn in np.arange(0, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
     print("dataset nr. {}".format(nnn + 1))
@@ -123,7 +122,7 @@ for nnn in np.arange(0, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
     # calculating the difference between the two images and creating a mask
     mask = create_mask(img_before_blurred, img_after_blurred, threshold_mask, blur, squaring=False)
     masked_img, extents = create_masked_img(img_after, mask, cropping)
-    mask2 = create_mask(img_before_blurred, img_after_blurred, threshold_mask, blur, squaring=squaring)
+    mask2 = create_mask(img_before_blurred, img_after_blurred, threshold_mask, blur, squaring=True)
     masked_img2, extents2 = create_masked_img(img_after, mask2, cropping)
 
     # setting a threshold for the image_after within the mask
