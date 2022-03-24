@@ -67,7 +67,7 @@ max_slices = 40
 cropping = True  # if true, the last images will be cropped to only the mask
 squaring = True  # if true, the mask will be altered to be a square
 
-for nnn in np.arange(13, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+for nnn in np.arange(0, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
     print("dataset nr. {}".format(nnn + 1))
     print(data_paths_before[nnn])
 
@@ -103,7 +103,7 @@ for nnn in np.arange(13, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
 
     # here I try line detection
     x_lines, y_lines, lines, edges = find_lines(img_after_blurred)
-    lines = None
+    # lines = None
     # Iterate over points
 
     # look at the lines and see if they have the same angle and rough distance between them
