@@ -1,7 +1,9 @@
+import logging
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage.filters import gaussian_filter
-from scipy.ndimage import binary_opening, binary_closing  # , binary_erosion, binary_dilation
+from scipy.ndimage import binary_opening, binary_closing, binary_erosion  # binary_dilation
 from scipy.signal import fftconvolve
 from skimage.draw import circle_perimeter
 from skimage.util import img_as_ubyte
@@ -51,7 +53,7 @@ def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, mode='max
         elif mode == 'mean':
             img = np.mean(img, axis=0)
         else:
-            raise Warning("mode input not recognized, maximum intensity projection is used.")
+            logging.warning("Mode input not recognized, maximum intensity projection is used.")
             img = np.max(img, axis=0)
 
     else:
@@ -131,6 +133,25 @@ def rescaling(img_before, img_after):
 
 
 def overlay(img_before, img_after, max_shift=5):
+
+    """
+    Shift the img_after in x and y position to have the best overlay with img_before.
+    This is done with finding the maximum in a convolution.
+
+    Parameters:
+        img_before (ndarray):   The image which will be shifted to for the best overlay.
+        img_after (ndarray):    The image which will shift to img_before for the best overlay.
+        max_shift (int):        It is assumed that the images are roughly at the same position,
+                                so no large shifts are needed. On all sides of the convolution image,
+                                1/max_shift of the image is set to be zero. So with 1/8 you have a max shift of 3/8 in
+                                x and y direction (-3/8*img_shape, 3/8*img_shape). If you don't want a constraint on
+                                the shift, set max_shift to <=1
+
+    Returns:
+        img_after (ndarray):    The shifted image, the values outside the boundaries of the image are set to the max
+                                value of the image so that in further processing steps those regions are not used.
+    """
+
     # max shift is between 1 and inf, the higher, the higher the shift can be
     # if it is 1 no constraints will be given on the shift
     mean_after = np.mean(img_after)
@@ -174,7 +195,27 @@ def overlay(img_before, img_after, max_shift=5):
     return img_after
 
 
-def blur_and_norm(img_before, img_after, blur=5):
+def blur_and_norm(img_before, img_after, blur=25):
+
+    """
+    Because the images before and after milling have different intensity profiles and do not have the exact same noise,
+    normalization and blurring is required for being able to compare the two images. Here the two images are first
+    blurred with a Gaussian filter and afterwards normalized to a range from 0 to 1. The unblurred images are also
+    normalized with their own maximum and the minimum of the blurred images. The minimum of the blurred images are used
+    because everything below this is probably noise.
+
+    Parameters:
+        img_before (ndarray):   The image before milling to be blurred and normalized.
+        img_after (ndarray):    The image after milling to be blurred and normalized.
+        blur (int):             The sigma for the gaussian blurring, the higher the number, the more blurring occurs.
+
+    Returns:
+        img_before (ndarray):           The unblurred, normalized image before milling.
+        img_after (ndarray):            The unblurred, normalized image after milling.
+        img_before_blurred (ndarray):   The blurred, normalized image before milling.
+        img_after_blurred (ndarray):    The blurred, normalized image after milling.
+    """
+
     img_before_blurred = gaussian_filter(img_before, sigma=blur)
     img_after_blurred = gaussian_filter(img_after, sigma=blur)
 
@@ -195,12 +236,30 @@ def blur_and_norm(img_before, img_after, blur=5):
     return img_before, img_after, img_before_blurred, img_after_blurred
 
 
-def create_mask(img_before_blurred, img_after_blurred, threshold_mask, blur, squaring=False):
+def create_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, open_iter=12, ero_iter=0, squaring=False):
+
+    """
+    Here a mask is created with looking at the difference in intensities between the blurred images before and after
+    milling. A threshold is set for the difference and a binary opening is performed to get rid of too small
+    masks (optional but recommended). A binary erosion also can be done but probably not necessary.
+
+    Parameters:
+        img_before_blurred (ndarray):   The blurred image before milling.
+        img_after_blurred (ndarray):    The blurred image after milling.
+        threshold_mask (float):         The threshold at which the difference in intensities needs to be to pass.
+        open_iter (int):                How many iterations of binary opening you want to perform.
+        ero_iter (int):                 How many iterations of binary erosion you want to perform.
+        squaring (bool):                If set to true, a square is taken around the mask becomes the mask itself.
+    """
+
     # calculating the difference between the two images and creating a mask
     diff = img_before_blurred - 1.5 * img_after_blurred  # times 1.5 to account for intensity differences (more robust)
     mask = diff >= threshold_mask
-    mask = binary_opening(mask, iterations=int(blur / 2))  # First opening
-    # mask2 = binary_erosion(mask2, iterations=5)  # if the edges give too much signal we can erode the mask a bit more
+    if open_iter >= 1:
+        mask = binary_opening(mask, iterations=open_iter)  # First opening int(blur / 2)
+    if ero_iter >= 1:
+        # if the edges give too much signal we can erode the mask a bit more
+        mask = binary_erosion(mask, iterations=ero_iter)
 
     # to crop and/or square the image around the ROI if possible and wanted: cropping = True and/or squaring = True
     index_mask = np.where(mask)
