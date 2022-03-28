@@ -250,6 +250,9 @@ def create_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, open_
         open_iter (int):                How many iterations of binary opening you want to perform.
         ero_iter (int):                 How many iterations of binary erosion you want to perform.
         squaring (bool):                If set to true, a square is taken around the mask becomes the mask itself.
+
+    Returns:
+        mask (ndarray):                 The mask created in the form of a boolean numpy array.
     """
 
     # calculating the difference between the two images and creating a mask
@@ -276,6 +279,21 @@ def create_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, open_
 
 
 def create_masked_img(img_after, mask, cropping=False):
+
+    """
+    Multiplies the mask with the image after milling, so you only see the signal within the mask.
+    If cropping set to True and there is a mask, the outputted image is cropped to show only the mask.
+
+    Parameters:
+        img_after (ndarray):    The image to be multiplied with the mask.
+        mask (ndarray):         The mask to be multiplied with the image.
+        cropping (bool):        If set to true, the image is cropped to show only the mask.
+
+    Returns:
+        masked_img (ndarray):   The image signal at the mask.
+        extents (tuple):        The extent of the cropped image. (for plotting and visualization purposes)
+    """
+
     # getting the after milling signal only in the mask
     masked_img = img_after * mask
     index_mask = np.where(mask)
@@ -299,7 +317,22 @@ def create_masked_img(img_after, mask, cropping=False):
     return masked_img, extents
 
 
-def create_binary_end_image(masked_img, threshold, open_close=True):
+def create_binary_end_image(masked_img, threshold=0.25, open_close=True):
+
+    """
+    To apply a threshold on the image signal within the mask.
+    After the threshold, some binary closing, opening and again closing is performed (optional but recommended).
+    The result is thought to be signal instead of noise.
+
+    Parameters:
+        masked_img (ndarray):           The image signal within the mask (output from create_masked_img).
+        threshold (float):              The threshold for signal detection (just a simple img >= threshold).
+        open_close (bool):              If the binary operations should be executed or not.
+
+    Returns:
+        binary_end_result (ndarray):    A binary image which shows the thought to be signal in the masked image.
+    """
+
     binary_end_result = masked_img >= threshold
 
     # getting rid of too small ROIs and noise after the threshold
@@ -311,6 +344,30 @@ def create_binary_end_image(masked_img, threshold, open_close=True):
 
 def detect_blobs(binary_end_result2, min_circ=0, max_circ=1, min_area=0, max_area=np.inf, min_in=0, max_in=1,
                  plotting=False):
+
+    """
+    Here blob detection from opencv is performed on a binary image (or an image with intensities ranging from 0 to 1).
+    You can set the constraints of the blob detection with the parameters of this function.
+
+    If you want more information on the opencv blob detection and how the parameters exactly work:
+    https://learnopencv.com/blob-detection-using-opencv-python-c/
+
+    Parameters:
+        binary_end_result2 (ndarray):   The image on which blob detection should be performed.
+        min_circ (float):               The minimal circularity the blob needs to have to be detected (range:[0,1])
+        max_circ (float):               The maximal circularity the blob needs to have to be detected (range:[0,1])
+        min_area (float):               The minimal area in pixels the blob needs to have to be detected (range:[0,inf])
+        max_area (float):               The maximal area in pixels the blob needs to have to be detected (range:[0,inf])
+        min_in (float):                 The minimal inertia the blob needs to have to be detected (range:[0,1])
+        max_in (float):                 The maximal inertia the blob needs to have to be detected (range:[0,1])
+        plotting (bool):                If set to True, the detected blobs are shown with red circles in the image.
+
+    Returns:
+        key_points (tuple):             The raw output of the opencv blob detection.
+        yxr (ndarray):                  Only the (y,x) position and the radius of the blob in a numpy array.
+
+    """
+
     im = np.array(binary_end_result2 * 255,
                   dtype=np.uint8)  # cv2.cvtColor(binary_end_result2.astype('uint8'), cv2.COLOR_BGR2GRAY)
     im = cv2.cvtColor(im, cv2.IMREAD_GRAYSCALE)
@@ -370,6 +427,29 @@ def detect_blobs(binary_end_result2, min_circ=0, max_circ=1, min_area=0, max_are
 
 def plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img, masked_img2,
                      binary_end_result1, binary_end_result2, cropping, extents, extents2):
+
+    """
+    This functions shows 6 images on different processing steps in this script. It shows the input used in the very
+    beginning, where the mask is found, and what the binary signal is within the mask.
+
+    Parameters:
+         img_before (ndarray):          The image before milling.
+         img_after (ndarray):           The image after milling.
+         img_before_blurred (ndarray):  The image before milling normalized and blurred.
+         img_after_blurred (ndarray):   The image after milling normalized and blurred.
+         mask (ndarray):                The mask of the milling site.
+         masked_img (ndarray):          The image signal within the mask without binary operations.
+         masked_img2 (ndarray):         The image signal within the mask with binary operations.
+         binary_end_result1 (ndarray):  The binary end result of the threshold on the masked_img.
+         binary_end_result2 (ndarray):  The binary end result of the threshold on the masked_img2.
+         cropping (bool):               Boolean on if the image was cropped or not around the mask.
+         extents (tuple):               The extents on the cropped (or un-cropped) masked_img.
+         extents2 (tuple):              The extents on the cropped (or un-cropped) masked_img2.
+
+    Returns:
+        Nothing, only shows the images with matplotlib.pyplot.
+    """
+
     # plotting the results
     x_min = extents2[0]
     x_max = extents2[1]
@@ -412,6 +492,20 @@ def plot_end_results(img_before, img_after, img_before_blurred, img_after_blurre
 
 
 def find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x'):
+
+    """
+    Find the rough position of the milling site in x or y direction. This is done by projection the images on one of
+    the axes and look for a maximum in the difference.
+
+    Parameters:
+        img_before_blurred (ndarray):   The image before milling.
+        img_after_blurred (ndarray):    The image after milling.
+        ax (string):                    A string which says which axes to project on (x or y)
+
+    Returns:
+        mid_milling_site (int):         The x or y position of the milling site in pixels.
+    """
+
     if ax == 'x':
         projection_before = np.sum(img_before_blurred, axis=0)
         projection_after = np.sum(img_after_blurred, axis=0)
@@ -426,7 +520,36 @@ def find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x'):
 
 
 def find_lines(img_after_blurred, blur=10, low_thres_edges=0.1, high_thres_edges=2.5, angle_res=np.pi/180, 
-               line_thres=1, min_lin_lines=1/45, max_line_gap=1/40):
+               line_thres=1, min_len_lines=1/45, max_line_gap=1/40):
+
+    """
+    This function finds all the lines in an image with the canny (edge detection) function of skimage and the line
+    detection function of opencv. You can set constraints to this line detection with the parameters of this function.
+    If no lines are found, None is returned for everything.
+
+    For more information on the canny and HoughLines functions:
+    https://scikit-image.org/docs/stable/api/skimage.feature.html?highlight=module%20feature#skimage.feature.canny
+    https://docs.opencv.org/3.4/d3/de6/tutorial_js_houghlines.html
+
+    Parameters:
+        img_after_blurred (ndarray):    The image on which line detection is used.
+        blur (int):                     The (extra) blurring done on the image for edge detection.
+        low_thres_edges (float):        The lower hysteresis threshold passed into the canny edge detection.
+        high_thres_edges (float):       The upper hysteresis threshold passed into the canny edge detection.
+        angle_res (float):              The angular resolution with which lines are detected in the opencv function.
+        line_thres (int):               The quality threshold for lines to be detected.
+        min_len_lines (float):          The minimal length of the lines detected as a fraction of the image size.
+        max_line_gap (float):           The maximal gap within the detected lines as a fraction of the image size.
+
+    Returns:
+        x_lines ():                     The x-center of the lines detected.
+        y_lines ():                     The y-center of the lines detected.
+        lines (ndarray):                The lines detected in the format (#lines, 1, 4).
+                                        The last index gives the positions of the ends of the lines:
+                                        (0: x of end 1, 1: y of end 1, 2: x of end 2, 3: y of end 2).
+        edges (ndarray):                The output image of the edge detection.
+    """
+
     image = img_as_ubyte(img_after_blurred)
     image = cv2.bitwise_not(image)
 
@@ -436,7 +559,7 @@ def find_lines(img_after_blurred, blur=10, low_thres_edges=0.1, high_thres_edges
     # high_thres_edges = 2.5
     # angle_res = np.pi / 180
     # line_thres = 1
-    min_len_lines = shape_1 * min_lin_lines
+    min_len_lines = shape_1 * min_len_lines
     max_line_gap = shape_1 * max_line_gap
 
     edges = img_as_ubyte(canny(image, sigma=blur, low_threshold=low_thres_edges, high_threshold=high_thres_edges))
@@ -453,6 +576,17 @@ def find_lines(img_after_blurred, blur=10, low_thres_edges=0.1, high_thres_edges
 
 
 def calculate_angles(lines):
+
+    """
+    Here the angles of the lines are calculated with a simple arctan. It will have the range of 0 to pi.
+
+    Parameters:
+        lines (ndarray):        The end positions of the lines as outputted from find_lines.
+
+    Returns:
+        angle_lines (ndarray):  The angles of the lines in a single 1D-array.
+    """
+
     if lines is None:
         return None
     angle_lines = np.zeros(lines.shape[0])
@@ -469,6 +603,35 @@ def calculate_angles(lines):
 def combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines, mid_milling_site, img_shape, 
                                  x_width_constraint=1/4, y_width_constraint=3/4, angle_constraint=np.pi/7, 
                                  max_dist=1/30, max_diff_angle=np.pi/12):
+
+    """
+    Here lines which are roughly at the same spot and angle are combined in one line.
+    Next to that, also some constraints can be given for which lines to pick out for further processing.
+    Lines at an angle of around 0 or pi are discarded because no solution on the boundary here has been implemented.
+
+    Parameters:
+        x_lines (ndarray):              The x-centers of the lines.
+        y_lines (ndarray):              The y-centers of the lines.
+        lines (ndarray):                The end positions of the lines as outputted from find_lines.
+        angle_lines (ndarray):          The angles of the lines as outputted from calculate_angles.
+        mid_milling_site (int):         The x center position of the milling site.
+        img_shape (tuple):              The shape of the image.
+        x_width_constraint (float):     The range of the x centers lines should have around the milling site for further
+                                        processing as a fraction of the image shape.
+        y_width_constraint (float):     The range of the y centers lines should have around the middle of the image
+                                        for further processing as a fraction of the image shape.
+        angle_constraint (float):       The angle of the lines have to be bigger than the angle_constraint and smaller
+                                        than pi - angle_constraint.
+        max_dist (float):               The maximum distance lines can have between their center positions to merge.
+        max_diff_angle (float):         The maximum difference in angles lines can have to merge.
+
+    Returns:
+        x_lines (ndarray):              The x-center of the lines after merging and selection.
+        y_lines (ndarray):              The y-center of the lines after merging and selection.
+        lines (ndarray):                The end positions of the lines after merging and selection.
+        angle_lines (ndarray):          The angles of the lines after merging and selection.
+    """
+
     if lines is None:
         return None, None, None, None
     x_constraint = img_shape[1] * x_width_constraint / 2  
@@ -544,6 +707,26 @@ def combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines, mid_milli
     
 
 def group_single_lines(x_lines, y_lines, lines, angle_lines, max_distance, max_angle_diff=np.pi/16):
+
+    """
+    Here individual lines are grouped together based on their angle and perpendicular distance between each other.
+    The lines here are regarded as lines with infinite length so that always the perpendicular distance between lines
+    can be calculated.
+
+    Parameters:
+        x_lines (ndarray):              The x-centers of the lines.
+        y_lines (ndarray):              The y-centers of the lines.
+        lines (ndarray):                The end positions of the lines.
+        angle_lines (ndarray):          The angles of the lines.
+        max_distance (float):           The maximum perpendicular distance between lines in pixels to group them.
+        max_angle_diff (float):         The maximum difference in angles between lines to group them.
+
+    Returns:
+        groups (list):                  A list with all the groups created. Each group has the index values of the
+                                        lines in that group. So lines[groups[0]] gives you the lines of the first group.
+
+    """
+
     if lines is None:
         return None
     groups = []
@@ -574,6 +757,28 @@ def group_single_lines(x_lines, y_lines, lines, angle_lines, max_distance, max_a
 
 
 def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, min_dist, max_dist, max_angle_diff=np.pi/8):
+
+    """
+    Here the function will look if groups of lines can together form a band which has roughly the same width as the
+    milling site. If multiple groups of lines can form bands, the one with the most individual lines will be outputted.
+    If these bands have the same number of lines in them, the function looks if they can be merged or not, if not only
+    the first band will be outputted.
+
+    Parameters:
+        groups (list):              The groups of individual lines outputted from group_single_lines.
+        x_lines (ndarray):          The x-centers of the lines.
+        y_lines (ndarray):          The y-centers of the lines.
+        angle_lines (ndarray):      The angles of the lines.
+        min_dist (float):           The minimum perpendicular distance between groups of lines in pixels to group them.
+        max_dist (float):           The maximum perpendicular distance between groups of lines in pixels to group them.
+        max_angle_diff (float):     The maximum difference in angles between groups of lines to group them.
+
+    Returns:
+        after_grouping (ndarray):   The index values of the lines of the biggest group after the grouping of groups.
+                                    These lines (probably) represent the edges of the milling site.
+
+    """
+
     if groups is None:
         return None
     size_groups_combined = np.zeros((len(groups), len(groups)))
@@ -660,6 +865,19 @@ def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, min_dist, max_
 
 
 def show_line_detection_steps(img_after, img_after_blurred, edges, lines, lines2, after_grouping):
+
+    """
+    Here the line detection steps are shown in images for visualization of the process.
+
+    Parameters:
+        img_after (ndarray):            The image after milling on which the line detection is executed.
+        img_after_blurred (ndarray):    The image after milling blurred and normalized.
+        edges (ndarray):                The edges image from the canny function in find_lines().
+        lines (ndarray):                The lines before combine_and_constraint_lines().
+        lines2 (ndarray):               The lines after combine_and_constraint_lines().
+        after_grouping (ndarray):       The end result of the lines which (probably) represent the milling site.
+    """
+
     if lines is not None:
         image = img_as_ubyte(img_after_blurred)
         image = cv2.bitwise_not(image)
