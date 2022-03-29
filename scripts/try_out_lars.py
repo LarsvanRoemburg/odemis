@@ -66,7 +66,7 @@ blur = 25
 max_slices = 40
 cropping = True  # if true, the last images will be cropped to only the mask
 
-for nnn in np.arange(1, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+for nnn in np.arange(0, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
     print("dataset nr. {}".format(nnn + 1))
     print(data_paths_before[nnn])
 
@@ -75,14 +75,14 @@ for nnn in np.arange(1, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
     data_before_milling = tiff.read_data(data_paths_before[nnn])
     meta_before = data_before_milling[channel_before[nnn]].metadata
 
-    img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices, channel_before[nnn], mode='max')
+    img_before = z_projection_and_outlier_cutoff(nnn+1, data_before_milling, max_slices, channel_before[nnn], mode='max')
     del data_before_milling
 
     # for data after milling
     data_after_milling = tiff.read_data(data_paths_after[nnn])
     meta_after = data_after_milling[channel_after[nnn]].metadata
 
-    img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices, channel_after[nnn], mode='max')
+    img_after = z_projection_and_outlier_cutoff(nnn+1, data_after_milling, max_slices, channel_after[nnn], mode='max')
     del data_after_milling
 
     print("Pixel sizes are the same: {}".format(meta_before["Pixel size"][0] == meta_after["Pixel size"][0]))
@@ -91,33 +91,37 @@ for nnn in np.arange(1, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
     img_before, img_after = rescaling(img_before, img_after)
 
     # calculate the shift between the two images
+    print("From convolution shift is:")
     img_after = overlay(img_before, img_after, max_shift=4)  # max_shift between 1 and inf
+
+    diff = (np.array(meta_before['Centre position']) - np.array(meta_after['Centre position'])) / np.array(meta_after['Pixel size'])
+    print("From metadata shift is: x: {}, y: {}, z: {}".format(diff[0], diff[1], diff[2]))
 
     # preprocessing steps of the images: blurring the image
     img_before, img_after, img_before_blurred, img_after_blurred = blur_and_norm(img_before, img_after, blur=blur)
 
     # detecting two parallel lines
-    # the dip in this projection is where there is milled
-    mid_milling_site = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred)
+    # the max difference in this projection is where there is milled
+    # mid_milling_site = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred)
+    #
+    # # here I try line detection
+    # x_lines, y_lines, lines, edges = find_lines(img_after_blurred)
+    # # lines = None
+    # # Iterate over points
+    #
+    # # look at the lines and see if they have the same angle and rough distance between them
+    # angle_lines = calculate_angles(lines)
+    # x_lines2, y_lines2, lines2, angle_lines2 = combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines,
+    #                                                                         mid_milling_site,
+    #                                                                         img_after_blurred.shape)
+    #
+    # groups = group_single_lines(x_lines2, y_lines2, lines2, angle_lines2, max_distance=img_after.shape[1] / 20)
+    #
+    # after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2,
+    #                                         max_dist=img_after.shape[1] / 5,
+    #                                         min_dist=img_after.shape[1] / 20)
 
-    # here I try line detection
-    x_lines, y_lines, lines, edges = find_lines(img_after_blurred)
-    # lines = None
-    # Iterate over points
-
-    # look at the lines and see if they have the same angle and rough distance between them
-    angle_lines = calculate_angles(lines)
-    x_lines2, y_lines2, lines2, angle_lines2 = combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines,
-                                                                            mid_milling_site,
-                                                                            img_after_blurred.shape)
-
-    groups = group_single_lines(x_lines2, y_lines2, lines2, angle_lines2, max_distance=img_after.shape[1] / 20)
-
-    after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2,
-                                            max_dist=img_after.shape[1] / 5,
-                                            min_dist=img_after.shape[1] / 20)
-
-    show_line_detection_steps(img_after, img_after_blurred, edges, lines, lines2, after_grouping)
+    # show_line_detection_steps(img_after, img_after_blurred, edges, lines, lines2, after_grouping)
 
     # calculating the difference between the two images and creating a mask
     mask = create_mask(img_before_blurred, img_after_blurred, squaring=False)
@@ -132,16 +136,16 @@ for nnn in np.arange(1, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
     print("binary image made")
 
     # here I start with trying to detect circles
-    key_points, yxr = detect_blobs(binary_end_result2, min_circ=0.6, min_area=8**2, plotting=False)
+    # key_points, yxr = detect_blobs(binary_end_result2, min_circ=0.6, min_area=8**2, plotting=False)
+    #
+    # print("circle detection complete")
 
-    print("circle detection complete")
-
-    plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img, masked_img2,
+    plot_end_results(nnn+1, img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img, masked_img2,
                      binary_end_result1, binary_end_result2, cropping, extents, extents2)
 
-    del img_before, img_before_blurred, img_after, img_after_blurred, edges, \
-        lines, mask, mask2, masked_img, masked_img2, binary_end_result1, \
-        binary_end_result2, meta_before, meta_after
+    del img_before, img_before_blurred, img_after, img_after_blurred, \
+        mask, mask2, masked_img, masked_img2, binary_end_result1, \
+        binary_end_result2, meta_before, meta_after  # edges, lines,
     gc.collect()
 
     print("Successful!\n")

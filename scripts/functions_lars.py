@@ -12,7 +12,7 @@ from copy import deepcopy
 import cv2
 
 
-def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, mode='max'):
+def z_projection_and_outlier_cutoff(e, data, max_slices, which_channel=0, outlier_cutoff=99, mode='max'):
 
     """
     Converts the Odemis data into an image for further use in the automatic ROI detection.
@@ -24,6 +24,7 @@ def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, mode='max
         max_slices (int):       The maximum number of slices used in the z-projection.
                                 It is always centered around the slice in the middle of the z-stack.
         which_channel (int):    If there are multiple channels in the data, you can specify which you need.
+        outlier_cutoff (float): At which percentage the intensity histogram should be cut off.
         mode (string):          To indicate which method to use with the z-projection, two options:
                                     'max': maximum intensity projection
                                     'mean': average intensity projection
@@ -32,6 +33,7 @@ def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, mode='max
         img (ndarray): the image returned as a numpy array
     """
 
+    # fig, ax = plt.subplots()
     if data[0].shape[0] == 1:
         num_z = len(data[which_channel][0][0])
         print("#z-slices: {}".format(num_z))
@@ -43,9 +45,15 @@ def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, mode='max
 
         histo, bins = np.histogram(img, bins=2000)
         histo = np.cumsum(histo)
-        histo = histo / histo[-1]
-        plc = np.min(np.where(histo > 0.99))
+        histo = histo / histo[-1] * 100
+        plc = np.min(np.where(histo > outlier_cutoff))
         thr_out_before = bins[plc] / 2 + bins[plc + 1] / 2
+        # ax.plot(bins[1:]-(bins[2]-bins[1])/2, histo)
+        # ax.set_title("Normalized cumulative histogram of #{}".format(e))
+        # ax.set_ylabel("#pixels (%)")
+        # ax.set_xlabel("Intensity value ()")
+        # print("outlier threshold is at {}".format(thr_out_before))
+        # print("max outlier value is {}".format(bins[-1]))
         img[img > thr_out_before] = thr_out_before
 
         if mode == 'max':
@@ -63,9 +71,15 @@ def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, mode='max
 
         histo, bins = np.histogram(img, bins=2000)
         histo = np.cumsum(histo)
-        histo = histo / histo[-1]
-        plc = np.min(np.where(histo > 0.99))
+        histo = histo / histo[-1] * 100
+        plc = np.min(np.where(histo > outlier_cutoff))
         thr_out_before = bins[plc] / 2 + bins[plc + 1] / 2
+        # ax.plot(bins[1:] - (bins[2] - bins[1]) / 2, histo)
+        # ax.set_title("Normalized cumulative histogram of #{}".format(e))
+        # ax.set_ylabel("#pixels (%)")
+        # ax.set_xlabel("Intensity value ()")
+        # print("outlier threshold is at {}".format(thr_out_before))
+        # print("max outlier value is {}".format(bins[-1]))
         img[img > thr_out_before] = thr_out_before
 
     return img
@@ -425,7 +439,7 @@ def detect_blobs(binary_end_result2, min_circ=0, max_circ=1, min_area=0, max_are
     return key_points, yxr
 
 
-def plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img, masked_img2,
+def plot_end_results(e, img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img, masked_img2,
                      binary_end_result1, binary_end_result2, cropping, extents, extents2):
 
     """
@@ -465,7 +479,9 @@ def plot_end_results(img_before, img_after, img_before_blurred, img_after_blurre
     cv2.line(img_after_blurred, (x_max, y_min), (x_max, y_max), ints_after, 5)
     cv2.line(img_after_blurred, (x_min, y_max), (x_max, y_max), ints_after, 5)
     cv2.line(img_after_blurred, (x_min, y_min), (x_min, y_max), ints_after, 5)
-    fig, ax = plt.subplots(4, 2)
+
+    fig, ax = plt.subplots(4, 2, figsize=(15, 15))  # , sharey=True, sharex=True)  # sharex=True, sharey=True, dpi=600
+
     ax[0, 0].imshow(img_before)
     ax[0, 0].set_title("before")
     ax[0, 1].imshow(img_after)
@@ -488,7 +504,10 @@ def plot_end_results(img_before, img_after, img_before_blurred, img_after_blurre
     ax[3, 0].set_title("end without 2nd opening")
 
     ax[3, 1].set_title("end with 2nd opening")
+
+    # plt.savefig("/home/victoria/Documents/Lars/figures/data nr{} max ip.png".format(e), dpi=300)  # , dpi=600)
     plt.show()
+    # del fig, ax
 
 
 def find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x'):
