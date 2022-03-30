@@ -250,7 +250,437 @@ def blur_and_norm(img_before, img_after, blur=25):
     return img_before, img_after, img_before_blurred, img_after_blurred
 
 
-def create_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, open_iter=12, ero_iter=0, squaring=False):
+def find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x'):
+    """
+    Find the rough position of the milling site in x or y direction. This is done by projection the images on one of
+    the axes and look for a maximum in the difference.
+
+    Parameters:
+        img_before_blurred (ndarray):   The image before milling.
+        img_after_blurred (ndarray):    The image after milling.
+        ax (string):                    A string which says which axes to project on (x or y)
+
+    Returns:
+        mid_milling_site (int):         The x or y position of the milling site in pixels.
+    """
+
+    if ax == 'x':
+        projection_before = np.sum(img_before_blurred, axis=0)
+        projection_after = np.sum(img_after_blurred, axis=0)
+    elif ax == 'y':
+        projection_before = np.sum(img_before_blurred, axis=1)
+        projection_after = np.sum(img_after_blurred, axis=1)
+    else:
+        raise NameError("ax does not have the correct input")
+    diff_proj = projection_before - projection_after
+    mid_milling_site = np.where(diff_proj == np.max(diff_proj))[0][0]
+    return mid_milling_site
+
+
+def find_lines(img_after_blurred, blur=10, low_thres_edges=0.1, high_thres_edges=2.5, angle_res=np.pi / 180,
+               line_thres=1, min_len_lines=1 / 45, max_line_gap=1 / 40):
+    """
+    This function finds all the lines in an image with the canny (edge detection) function of skimage and the line
+    detection function of opencv. You can set constraints to this line detection with the parameters of this function.
+    If no lines are found, None is returned for everything.
+
+    For more information on the canny and HoughLines functions:
+    https://scikit-image.org/docs/stable/api/skimage.feature.html?highlight=module%20feature#skimage.feature.canny
+    https://docs.opencv.org/3.4/d3/de6/tutorial_js_houghlines.html
+
+    Parameters:
+        img_after_blurred (ndarray):    The image on which line detection is used.
+        blur (int):                     The (extra) blurring done on the image for edge detection.
+        low_thres_edges (float):        The lower hysteresis threshold passed into the canny edge detection.
+        high_thres_edges (float):       The upper hysteresis threshold passed into the canny edge detection.
+        angle_res (float):              The angular resolution with which lines are detected in the opencv function.
+        line_thres (int):               The quality threshold for lines to be detected.
+        min_len_lines (float):          The minimal length of the lines detected as a fraction of the image size.
+        max_line_gap (float):           The maximal gap within the detected lines as a fraction of the image size.
+
+    Returns:
+        x_lines ():                     The x-center of the lines detected.
+        y_lines ():                     The y-center of the lines detected.
+        lines (ndarray):                The lines detected in the format (#lines, 1, 4).
+                                        The last index gives the positions of the ends of the lines:
+                                        (0: x of end 1, 1: y of end 1, 2: x of end 2, 3: y of end 2).
+        edges (ndarray):                The output image of the edge detection.
+    """
+
+    image = img_as_ubyte(img_after_blurred)
+    image = cv2.bitwise_not(image)
+
+    shape_1 = image.shape[1]
+    # blur = 10
+    # low_thres_edges = 0.1
+    # high_thres_edges = 2.5
+    # angle_res = np.pi / 180
+    # line_thres = 1
+    min_len_lines = shape_1 * min_len_lines
+    max_line_gap = shape_1 * max_line_gap
+
+    edges = img_as_ubyte(canny(image, sigma=blur, low_threshold=low_thres_edges, high_threshold=high_thres_edges))
+    lines = cv2.HoughLinesP(edges, 1, angle_res, threshold=line_thres, minLineLength=min_len_lines,
+                            maxLineGap=max_line_gap)
+    if lines is not None:
+        print("{} lines detected.".format(len(lines)))
+        x_lines = (lines.T[2] / 2 + lines.T[0] / 2).T.reshape((len(lines),))  # the middle points of the line
+        y_lines = (lines.T[3] / 2 + lines.T[1] / 2).T.reshape((len(lines),))
+        return x_lines, y_lines, lines, edges
+    else:
+        print("No lines are detected at all!")
+        return None, None, None, None
+
+
+def calculate_angles(lines):
+    """
+    Here the angles of the lines are calculated with a simple arctan. It will have the range of 0 to pi.
+
+    Parameters:
+        lines (ndarray):        The end positions of the lines as outputted from find_lines.
+
+    Returns:
+        angle_lines (ndarray):  The angles of the lines in a single 1D-array.
+    """
+
+    if lines is None:
+        return None
+    angle_lines = np.zeros(lines.shape[0])
+    for i in range(lines.shape[0]):
+        if lines[i][0][2] != lines[i][0][0]:
+            angle_lines[i] = np.arctan((lines[i][0][3] - lines[i][0][1]) / (lines[i][0][2] - lines[i][0][0]))
+            if angle_lines[i] < 0:
+                angle_lines[i] = angle_lines[i] + np.pi
+        else:
+            angle_lines[i] = np.pi / 2
+    return angle_lines
+
+
+def combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines, mid_milling_site, img_shape,
+                                 x_width_constraint=1 / 4, y_width_constraint=3 / 4, angle_constraint=np.pi / 7,
+                                 max_dist=1 / 30, max_diff_angle=np.pi / 12):
+    """
+    Here lines which are roughly at the same spot and angle are combined in one line.
+    Next to that, also some constraints can be given for which lines to pick out for further processing.
+    Lines at an angle of around 0 or pi are discarded because no solution on the boundary here has been implemented.
+
+    Parameters:
+        x_lines (ndarray):              The x-centers of the lines.
+        y_lines (ndarray):              The y-centers of the lines.
+        lines (ndarray):                The end positions of the lines as outputted from find_lines.
+        angle_lines (ndarray):          The angles of the lines as outputted from calculate_angles.
+        mid_milling_site (int):         The x center position of the milling site.
+        img_shape (tuple):              The shape of the image.
+        x_width_constraint (float):     The range of the x centers lines should have around the milling site for further
+                                        processing as a fraction of the image shape.
+        y_width_constraint (float):     The range of the y centers lines should have around the middle of the image
+                                        for further processing as a fraction of the image shape.
+        angle_constraint (float):       The angle of the lines have to be bigger than the angle_constraint and smaller
+                                        than pi - angle_constraint.
+        max_dist (float):               The maximum distance lines can have between their center positions to merge.
+        max_diff_angle (float):         The maximum difference in angles lines can have to merge.
+
+    Returns:
+        x_lines (ndarray):              The x-center of the lines after merging and selection.
+        y_lines (ndarray):              The y-center of the lines after merging and selection.
+        lines (ndarray):                The end positions of the lines after merging and selection.
+        angle_lines (ndarray):          The angles of the lines after merging and selection.
+    """
+
+    if lines is None:
+        return None, None, None, None
+    x_constraint = img_shape[1] * x_width_constraint / 2
+    # in which region you leave the lines exist : mid_mil_site +- x_constraint
+    y_constraint = img_shape[0] * y_width_constraint / 2
+    # in which region you leave the lines exist: y_const < y < y_shape - y_const
+    # angle_constraint = np.pi / 7  # exclude lines with angles < angle_constraint and > np.pi-angle_constraint
+    max_dist_for_merge = img_shape[0] * max_dist  # the max distance lines can have for merging
+    # max_diff_angle = np.pi / 12  # the max angle difference lines can have for merging
+
+    print("mid_milling_site = {}".format(mid_milling_site))
+    print("lower x boundary = {}".format(mid_milling_site - x_constraint))
+    print("upper x boundary = {}".format(mid_milling_site + x_constraint))
+
+    num_lines_present = np.ones(lines.shape[0])
+    for i in range(lines.shape[0]):
+        x1 = x_lines[i]
+        y1 = y_lines[i]
+        if (angle_lines[i] <= angle_constraint) | (angle_lines[i] >= (np.pi - angle_constraint)) | \
+                (x1 < (mid_milling_site - x_constraint)) | \
+                (x1 > (mid_milling_site + x_constraint)) | \
+                (y1 > (img_shape[0] / 2 + y_constraint)) | (y1 < (img_shape[0] / 2 - y_constraint)):
+            num_lines_present[i] = 0
+        else:
+            for j in range(lines.shape[0]):
+                if (i != j) & (num_lines_present[i] >= 1) & (num_lines_present[j] >= 1):
+                    dist = np.sqrt((x_lines[i] - x_lines[j]) ** 2 + (y_lines[i] - y_lines[j]) ** 2)
+                    diff_angle = np.abs(angle_lines[i] - angle_lines[j])
+                    if (dist <= max_dist_for_merge) & (diff_angle <= max_diff_angle):
+                        if i < j:
+                            lines[i][0][0] = (lines[i][0][0] * num_lines_present[i] + lines[j][0][0] *
+                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            lines[i][0][1] = (lines[i][0][1] * num_lines_present[i] + lines[j][0][1] *
+                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            lines[i][0][2] = (lines[i][0][2] * num_lines_present[i] + lines[j][0][2] *
+                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            lines[i][0][3] = (lines[i][0][3] * num_lines_present[i] + lines[j][0][3] *
+                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            angle_lines[i] = (angle_lines[i] * num_lines_present[i]
+                                              + angle_lines[j] * num_lines_present[j]) / \
+                                             (num_lines_present[i] + num_lines_present[j])
+                            x_lines[i] = (x_lines[i] * num_lines_present[i] + x_lines[j] * num_lines_present[
+                                j]) / (num_lines_present[i] + num_lines_present[j])
+                            y_lines[i] = (y_lines[i] * num_lines_present[i] + y_lines[j] * num_lines_present[
+                                j]) / (num_lines_present[i] + num_lines_present[j])
+                            num_lines_present[i] = num_lines_present[i] + num_lines_present[j]
+                            num_lines_present[j] = 0
+                        else:
+                            lines[j][0][0] = (lines[i][0][0] * num_lines_present[i] + lines[j][0][0] *
+                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            lines[j][0][1] = (lines[i][0][1] * num_lines_present[i] + lines[j][0][1] *
+                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            lines[j][0][2] = (lines[i][0][2] * num_lines_present[i] + lines[j][0][2] *
+                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            lines[j][0][3] = (lines[i][0][3] * num_lines_present[i] + lines[j][0][3] *
+                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            angle_lines[j] = (angle_lines[i] * num_lines_present[i]
+                                              + angle_lines[j] * num_lines_present[j]) / \
+                                             (num_lines_present[i] + num_lines_present[j])
+                            x_lines[j] = (x_lines[i] * num_lines_present[i] + x_lines[j] * num_lines_present[
+                                j]) / (num_lines_present[i] + num_lines_present[j])
+                            y_lines[j] = (y_lines[i] * num_lines_present[i] + y_lines[j] * num_lines_present[
+                                j]) / (num_lines_present[i] + num_lines_present[j])
+                            num_lines_present[j] = num_lines_present[i] + num_lines_present[j]
+                            num_lines_present[i] = 0
+
+    lines = lines[num_lines_present > 0]
+    x_lines = x_lines[num_lines_present > 0]
+    y_lines = y_lines[num_lines_present > 0]
+    angle_lines = angle_lines[num_lines_present > 0]
+
+    return x_lines, y_lines, lines, angle_lines
+
+
+def group_single_lines(x_lines, y_lines, lines, angle_lines, max_distance, max_angle_diff=np.pi / 16):
+    """
+    Here individual lines are grouped together based on their angle and perpendicular distance between each other.
+    The lines here are regarded as lines with infinite length so that always the perpendicular distance between lines
+    can be calculated.
+
+    Parameters:
+        x_lines (ndarray):              The x-centers of the lines.
+        y_lines (ndarray):              The y-centers of the lines.
+        lines (ndarray):                The end positions of the lines.
+        angle_lines (ndarray):          The angles of the lines.
+        max_distance (float):           The maximum perpendicular distance between lines in pixels to group them.
+        max_angle_diff (float):         The maximum difference in angles between lines to group them.
+
+    Returns:
+        groups (list):                  A list with all the groups created. Each group has the index values of the
+                                        lines in that group. So lines[groups[0]] gives you the lines of the first group.
+
+    """
+
+    if lines is None:
+        return None
+    groups = []
+    for i in range(len(lines)):
+        # print("{}% done".format(i / len(lines) * 100))
+        set_in_group = False
+        x1 = x_lines[i]
+        y1 = y_lines[i]
+        angle = angle_lines[i]
+        for j in range(len(groups)):
+            angle_mean = np.mean(angle_lines[groups[j]])
+            x2 = np.mean(x_lines[groups[j]])
+            y2 = np.mean(y_lines[groups[j]])
+            if np.abs(angle - angle_mean) <= max_angle_diff:
+                x3 = (y2 - y1 + np.tan(angle_mean + np.pi / 2 + 1e-10) * x1 - np.tan(angle_mean + 1e-10) * x2) \
+                     / (np.tan(angle_mean + np.pi / 2 + 1e-10) - np.tan(angle_mean + 1e-10))
+                y3 = np.tan(angle_mean + 1e-10) * (x3 - x2) + y2
+                dist = np.sqrt((x3 - x1) ** 2 + (y3 - y1) ** 2)
+                if dist <= max_distance:  # img_after.shape[1] / 20
+                    set_in_group = True
+                    groups[j].append(i)
+        if not set_in_group:
+            groups.append([i])
+
+    for i in range(len(groups)):
+        groups[i] = np.unique(groups[i])
+    return groups
+
+
+def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, min_dist, max_dist, max_angle_diff=np.pi / 8):
+    """
+    Here the function will look if groups of lines can together form a band which has roughly the same width as the
+    milling site. If multiple groups of lines can form bands, the one with the most individual lines will be outputted.
+    If these bands have the same number of lines in them, the function looks if they can be merged or not, if not only
+    the first band will be outputted.
+
+    Parameters:
+        groups (list):              The groups of individual lines outputted from group_single_lines.
+        x_lines (ndarray):          The x-centers of the lines.
+        y_lines (ndarray):          The y-centers of the lines.
+        angle_lines (ndarray):      The angles of the lines.
+        min_dist (float):           The minimum perpendicular distance between groups of lines in pixels to group them.
+        max_dist (float):           The maximum perpendicular distance between groups of lines in pixels to group them.
+        max_angle_diff (float):     The maximum difference in angles between groups of lines to group them.
+
+    Returns:
+        after_grouping (ndarray):   The index values of the lines of the biggest group after the grouping of groups.
+                                    These lines (probably) represent the edges of the milling site.
+
+    """
+
+    if groups is None:
+        return None
+    size_groups_combined = np.zeros((len(groups), len(groups)))
+    for i in range(len(groups)):
+        for j in np.arange(i + 1, len(groups), 1):
+            if np.abs(np.mean(angle_lines[groups[i]]) - np.mean(angle_lines[groups[j]])) <= max_angle_diff:
+                angle_mean = (np.mean(angle_lines[groups[i]]) * len(groups[i])
+                              + np.mean(angle_lines[groups[j]]) * len(groups[j])) / \
+                             (len(groups[i]) + len(groups[j]))
+                x1 = np.mean(x_lines[groups[i]])
+                y1 = np.mean(y_lines[groups[i]])
+                x2 = np.mean(x_lines[groups[j]])
+                y2 = np.mean(y_lines[groups[j]])
+                x3 = (y2 - y1 + np.tan(angle_mean + np.pi / 2 + 1e-10) * x1 - np.tan(angle_mean + 1e-10) * x2) / \
+                     (np.tan(angle_mean + np.pi / 2 + 1e-10) - np.tan(angle_mean + 1e-10))
+                y3 = np.tan(angle_mean + 1e-10) * (x3 - x2) + y2
+                dist = np.sqrt((x3 - x1) ** 2 + (y3 - y1) ** 2)
+                if (dist < max_dist) & (dist > min_dist):
+                    size_groups_combined[i, j] = (len(groups[i]) + len(groups[j]))
+
+    if np.max(size_groups_combined) > 0:
+        biggest = np.where(size_groups_combined == np.max(size_groups_combined))
+        # which one consist of the most pieces of small lines
+        after_grouping = []
+        if len(biggest[0]) > 1:
+            merge_big_groups = np.zeros((len(biggest[0]), len(biggest[0])), dtype=bool)
+
+            for k in range(len(biggest[0])):
+                for m in np.arange(k + 1, len(biggest[0]), 1):
+                    angle_k = (np.mean(angle_lines[groups[biggest[0][k]]]) * len(groups[biggest[0][k]])
+                               + np.mean(angle_lines[groups[biggest[1][k]]]) * len(groups[biggest[1][k]])) / \
+                              (len(groups[biggest[0][k]]) + len(groups[biggest[1][k]]))
+                    angle_l = (np.mean(angle_lines[groups[biggest[0][m]]]) * len(groups[biggest[0][m]])
+                               + np.mean(angle_lines[groups[biggest[1][m]]]) * len(groups[biggest[1][m]])) / \
+                              (len(groups[biggest[0][m]]) + len(groups[biggest[1][m]]))
+                    if np.abs(angle_k - angle_l) <= max_angle_diff:
+                        merge_big_groups[k, m] = True
+            print("total groups used: {}".format(np.sum(merge_big_groups)))
+            if np.sum(merge_big_groups) != 0:
+                groups2 = []
+                for x, y in np.array(np.where(merge_big_groups)).T:
+                    set_in_group2 = False
+                    for r in range(len(groups2)):
+                        if x in groups2[r] and y in groups2[r]:
+                            set_in_group2 = True
+                        elif x in groups2[r] and y not in groups2[r]:
+                            groups2[r].append(y)
+                            set_in_group2 = True
+                        elif y in groups2[r] and x not in groups2[r]:
+                            groups2[r].append(x)
+                            set_in_group2 = True
+                    if not set_in_group2:
+                        groups2.append([x, y])
+                b = 0
+                final_group = 0
+                for r in range(len(groups2)):
+                    groups2[r] = np.unique(groups2[r])
+                    if len(groups2[r]) > b:
+                        b = len(groups2[r])
+                        final_group = r
+                for i in groups2[final_group]:
+                    for j in groups[biggest[0][i]]:
+                        after_grouping.append(j)
+                    for k in groups[biggest[1][i]]:
+                        after_grouping.append(k)
+
+            else:
+                # if no groups merge and there are multiple groups the biggest,
+                # just take the first one and hope for the best
+                for i in groups[biggest[0][0]]:
+                    after_grouping.append(i)
+                for j in groups[biggest[1][0]]:
+                    after_grouping.append(j)
+
+        else:  # there is only one group
+            for i in groups[biggest[0][0]]:
+                after_grouping.append(i)
+            for j in groups[biggest[1][0]]:
+                after_grouping.append(j)
+        after_grouping = np.unique(after_grouping)
+    else:  # there are no coupled line groups
+        after_grouping = np.array([])
+    return after_grouping
+
+
+def show_line_detection_steps(img_after, img_after_blurred, edges, lines, lines2, after_grouping):
+    """
+    Here the line detection steps are shown in images for visualization of the process.
+
+    Parameters:
+        img_after (ndarray):            The image after milling on which the line detection is executed.
+        img_after_blurred (ndarray):    The image after milling blurred and normalized.
+        edges (ndarray):                The edges image from the canny function in find_lines().
+        lines (ndarray):                The lines before combine_and_constraint_lines().
+        lines2 (ndarray):               The lines after combine_and_constraint_lines().
+        after_grouping (ndarray):       The end result of the lines which (probably) represent the milling site.
+    """
+
+    if lines is not None:
+        image = img_as_ubyte(img_after_blurred)
+        image = cv2.bitwise_not(image)
+        image = image * 0.8
+        image1 = deepcopy(image)
+        image2 = deepcopy(image)
+        image3 = deepcopy(image)
+
+        if len(after_grouping) > 0:
+            print("{} lines after grouping".format(len(after_grouping)))
+
+            for points in lines2[after_grouping]:
+                # Extracted points nested in the list
+                x1, y1, x2, y2 = points[0]
+                # Draw the lines joining the points on the original image
+                cv2.line(image3, (x1, y1), (x2, y2), 255, 2)
+        else:
+            print("0 lines after grouping")
+
+        for points in lines:
+            # Extracted points nested in the list
+            x1, y1, x2, y2 = points[0]
+            # Draw the lines joining the points on the original image
+            cv2.line(image, (x1, y1), (x2, y2), 255, 2)
+
+        for points in lines2:
+            # Extracted points nested in the list
+            x1, y1, x2, y2 = points[0]
+            # Draw the lines joining the points on the original image
+            cv2.line(image1, (x1, y1), (x2, y2), 255, 2)
+
+        fig, ax = plt.subplots(ncols=2, nrows=3)
+        ax[0, 0].imshow(img_after)
+        ax[0, 0].set_title('img_after')
+        ax[0, 1].imshow(edges)
+        ax[0, 1].set_title('the edges')
+        ax[1, 1].imshow(image1)
+        ax[1, 1].set_title('similar lines combined')
+        ax[1, 0].imshow(image)
+        ax[1, 0].set_title('all the lines')
+        ax[2, 0].imshow(image2)
+        ax[2, 0].set_title('after selection')
+        ax[2, 1].imshow(image3)
+        ax[2, 1].set_title('after grouping')
+        plt.show()
+    else:
+        print("No lines were detected so nothing can be shown.")
+
+
+def create_diff_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, open_iter=12, ero_iter=0,
+                     squaring=False):
 
     """
     Here a mask is created with looking at the difference in intensities between the blurred images before and after
@@ -509,438 +939,3 @@ def plot_end_results(e, img_before, img_after, img_before_blurred, img_after_blu
     plt.show()
     # del fig, ax
 
-
-def find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x'):
-
-    """
-    Find the rough position of the milling site in x or y direction. This is done by projection the images on one of
-    the axes and look for a maximum in the difference.
-
-    Parameters:
-        img_before_blurred (ndarray):   The image before milling.
-        img_after_blurred (ndarray):    The image after milling.
-        ax (string):                    A string which says which axes to project on (x or y)
-
-    Returns:
-        mid_milling_site (int):         The x or y position of the milling site in pixels.
-    """
-
-    if ax == 'x':
-        projection_before = np.sum(img_before_blurred, axis=0)
-        projection_after = np.sum(img_after_blurred, axis=0)
-    elif ax == 'y':
-        projection_before = np.sum(img_before_blurred, axis=1)
-        projection_after = np.sum(img_after_blurred, axis=1)
-    else:
-        raise NameError("ax does not have the correct input")
-    diff_proj = projection_before - projection_after
-    mid_milling_site = np.where(diff_proj == np.max(diff_proj))[0][0]
-    return mid_milling_site
-
-
-def find_lines(img_after_blurred, blur=10, low_thres_edges=0.1, high_thres_edges=2.5, angle_res=np.pi/180, 
-               line_thres=1, min_len_lines=1/45, max_line_gap=1/40):
-
-    """
-    This function finds all the lines in an image with the canny (edge detection) function of skimage and the line
-    detection function of opencv. You can set constraints to this line detection with the parameters of this function.
-    If no lines are found, None is returned for everything.
-
-    For more information on the canny and HoughLines functions:
-    https://scikit-image.org/docs/stable/api/skimage.feature.html?highlight=module%20feature#skimage.feature.canny
-    https://docs.opencv.org/3.4/d3/de6/tutorial_js_houghlines.html
-
-    Parameters:
-        img_after_blurred (ndarray):    The image on which line detection is used.
-        blur (int):                     The (extra) blurring done on the image for edge detection.
-        low_thres_edges (float):        The lower hysteresis threshold passed into the canny edge detection.
-        high_thres_edges (float):       The upper hysteresis threshold passed into the canny edge detection.
-        angle_res (float):              The angular resolution with which lines are detected in the opencv function.
-        line_thres (int):               The quality threshold for lines to be detected.
-        min_len_lines (float):          The minimal length of the lines detected as a fraction of the image size.
-        max_line_gap (float):           The maximal gap within the detected lines as a fraction of the image size.
-
-    Returns:
-        x_lines ():                     The x-center of the lines detected.
-        y_lines ():                     The y-center of the lines detected.
-        lines (ndarray):                The lines detected in the format (#lines, 1, 4).
-                                        The last index gives the positions of the ends of the lines:
-                                        (0: x of end 1, 1: y of end 1, 2: x of end 2, 3: y of end 2).
-        edges (ndarray):                The output image of the edge detection.
-    """
-
-    image = img_as_ubyte(img_after_blurred)
-    image = cv2.bitwise_not(image)
-
-    shape_1 = image.shape[1]
-    # blur = 10
-    # low_thres_edges = 0.1
-    # high_thres_edges = 2.5
-    # angle_res = np.pi / 180
-    # line_thres = 1
-    min_len_lines = shape_1 * min_len_lines
-    max_line_gap = shape_1 * max_line_gap
-
-    edges = img_as_ubyte(canny(image, sigma=blur, low_threshold=low_thres_edges, high_threshold=high_thres_edges))
-    lines = cv2.HoughLinesP(edges, 1, angle_res, threshold=line_thres, minLineLength=min_len_lines,
-                            maxLineGap=max_line_gap)
-    if lines is not None:
-        print("{} lines detected.".format(len(lines)))
-        x_lines = (lines.T[2] / 2 + lines.T[0] / 2).T.reshape((len(lines),))  # the middle points of the line
-        y_lines = (lines.T[3] / 2 + lines.T[1] / 2).T.reshape((len(lines),))
-        return x_lines, y_lines, lines, edges
-    else:
-        print("No lines are detected at all!")
-        return None, None, None, None
-
-
-def calculate_angles(lines):
-
-    """
-    Here the angles of the lines are calculated with a simple arctan. It will have the range of 0 to pi.
-
-    Parameters:
-        lines (ndarray):        The end positions of the lines as outputted from find_lines.
-
-    Returns:
-        angle_lines (ndarray):  The angles of the lines in a single 1D-array.
-    """
-
-    if lines is None:
-        return None
-    angle_lines = np.zeros(lines.shape[0])
-    for i in range(lines.shape[0]):
-        if lines[i][0][2] != lines[i][0][0]:
-            angle_lines[i] = np.arctan((lines[i][0][3] - lines[i][0][1]) / (lines[i][0][2] - lines[i][0][0]))
-            if angle_lines[i] < 0:
-                angle_lines[i] = angle_lines[i] + np.pi
-        else:
-            angle_lines[i] = np.pi / 2
-    return angle_lines
-
-
-def combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines, mid_milling_site, img_shape, 
-                                 x_width_constraint=1/4, y_width_constraint=3/4, angle_constraint=np.pi/7, 
-                                 max_dist=1/30, max_diff_angle=np.pi/12):
-
-    """
-    Here lines which are roughly at the same spot and angle are combined in one line.
-    Next to that, also some constraints can be given for which lines to pick out for further processing.
-    Lines at an angle of around 0 or pi are discarded because no solution on the boundary here has been implemented.
-
-    Parameters:
-        x_lines (ndarray):              The x-centers of the lines.
-        y_lines (ndarray):              The y-centers of the lines.
-        lines (ndarray):                The end positions of the lines as outputted from find_lines.
-        angle_lines (ndarray):          The angles of the lines as outputted from calculate_angles.
-        mid_milling_site (int):         The x center position of the milling site.
-        img_shape (tuple):              The shape of the image.
-        x_width_constraint (float):     The range of the x centers lines should have around the milling site for further
-                                        processing as a fraction of the image shape.
-        y_width_constraint (float):     The range of the y centers lines should have around the middle of the image
-                                        for further processing as a fraction of the image shape.
-        angle_constraint (float):       The angle of the lines have to be bigger than the angle_constraint and smaller
-                                        than pi - angle_constraint.
-        max_dist (float):               The maximum distance lines can have between their center positions to merge.
-        max_diff_angle (float):         The maximum difference in angles lines can have to merge.
-
-    Returns:
-        x_lines (ndarray):              The x-center of the lines after merging and selection.
-        y_lines (ndarray):              The y-center of the lines after merging and selection.
-        lines (ndarray):                The end positions of the lines after merging and selection.
-        angle_lines (ndarray):          The angles of the lines after merging and selection.
-    """
-
-    if lines is None:
-        return None, None, None, None
-    x_constraint = img_shape[1] * x_width_constraint / 2  
-    # in which region you leave the lines exist : mid_mil_site +- x_constraint
-    y_constraint = img_shape[0] * y_width_constraint / 2  
-    # in which region you leave the lines exist: y_const < y < y_shape - y_const
-    # angle_constraint = np.pi / 7  # exclude lines with angles < angle_constraint and > np.pi-angle_constraint
-    max_dist_for_merge = img_shape[0] * max_dist  # the max distance lines can have for merging
-    # max_diff_angle = np.pi / 12  # the max angle difference lines can have for merging
-
-    print("mid_milling_site = {}".format(mid_milling_site))
-    print("lower x boundary = {}".format(mid_milling_site - x_constraint))
-    print("upper x boundary = {}".format(mid_milling_site + x_constraint))
-
-    num_lines_present = np.ones(lines.shape[0])
-    for i in range(lines.shape[0]):
-        x1 = x_lines[i]
-        y1 = y_lines[i]
-        if (angle_lines[i] <= angle_constraint) | (angle_lines[i] >= (np.pi - angle_constraint)) | \
-                (x1 < (mid_milling_site - x_constraint)) | \
-                (x1 > (mid_milling_site + x_constraint)) | \
-                (y1 > (img_shape[0]/2 + y_constraint)) | (y1 < (img_shape[0]/2 - y_constraint)):
-            num_lines_present[i] = 0
-        else:
-            for j in range(lines.shape[0]):
-                if (i != j) & (num_lines_present[i] >= 1) & (num_lines_present[j] >= 1):
-                    dist = np.sqrt((x_lines[i] - x_lines[j]) ** 2 + (y_lines[i] - y_lines[j]) ** 2)
-                    diff_angle = np.abs(angle_lines[i] - angle_lines[j])
-                    if (dist <= max_dist_for_merge) & (diff_angle <= max_diff_angle):
-                        if i < j:
-                            lines[i][0][0] = (lines[i][0][0] * num_lines_present[i] + lines[j][0][0] *
-                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
-                            lines[i][0][1] = (lines[i][0][1] * num_lines_present[i] + lines[j][0][1] *
-                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
-                            lines[i][0][2] = (lines[i][0][2] * num_lines_present[i] + lines[j][0][2] *
-                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
-                            lines[i][0][3] = (lines[i][0][3] * num_lines_present[i] + lines[j][0][3] *
-                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
-                            angle_lines[i] = (angle_lines[i] * num_lines_present[i]
-                                              + angle_lines[j] * num_lines_present[j]) / \
-                                             (num_lines_present[i] + num_lines_present[j])
-                            x_lines[i] = (x_lines[i] * num_lines_present[i] + x_lines[j] * num_lines_present[
-                                j]) / (num_lines_present[i] + num_lines_present[j])
-                            y_lines[i] = (y_lines[i] * num_lines_present[i] + y_lines[j] * num_lines_present[
-                                j]) / (num_lines_present[i] + num_lines_present[j])
-                            num_lines_present[i] = num_lines_present[i] + num_lines_present[j]
-                            num_lines_present[j] = 0
-                        else:
-                            lines[j][0][0] = (lines[i][0][0] * num_lines_present[i] + lines[j][0][0] *
-                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
-                            lines[j][0][1] = (lines[i][0][1] * num_lines_present[i] + lines[j][0][1] *
-                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
-                            lines[j][0][2] = (lines[i][0][2] * num_lines_present[i] + lines[j][0][2] *
-                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
-                            lines[j][0][3] = (lines[i][0][3] * num_lines_present[i] + lines[j][0][3] *
-                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
-                            angle_lines[j] = (angle_lines[i] * num_lines_present[i]
-                                              + angle_lines[j] * num_lines_present[j]) / \
-                                             (num_lines_present[i] + num_lines_present[j])
-                            x_lines[j] = (x_lines[i] * num_lines_present[i] + x_lines[j] * num_lines_present[
-                                j]) / (num_lines_present[i] + num_lines_present[j])
-                            y_lines[j] = (y_lines[i] * num_lines_present[i] + y_lines[j] * num_lines_present[
-                                j]) / (num_lines_present[i] + num_lines_present[j])
-                            num_lines_present[j] = num_lines_present[i] + num_lines_present[j]
-                            num_lines_present[i] = 0
-
-    lines = lines[num_lines_present > 0]
-    x_lines = x_lines[num_lines_present > 0]
-    y_lines = y_lines[num_lines_present > 0]
-    angle_lines = angle_lines[num_lines_present > 0]
-
-    return x_lines, y_lines, lines, angle_lines
-    
-
-def group_single_lines(x_lines, y_lines, lines, angle_lines, max_distance, max_angle_diff=np.pi/16):
-
-    """
-    Here individual lines are grouped together based on their angle and perpendicular distance between each other.
-    The lines here are regarded as lines with infinite length so that always the perpendicular distance between lines
-    can be calculated.
-
-    Parameters:
-        x_lines (ndarray):              The x-centers of the lines.
-        y_lines (ndarray):              The y-centers of the lines.
-        lines (ndarray):                The end positions of the lines.
-        angle_lines (ndarray):          The angles of the lines.
-        max_distance (float):           The maximum perpendicular distance between lines in pixels to group them.
-        max_angle_diff (float):         The maximum difference in angles between lines to group them.
-
-    Returns:
-        groups (list):                  A list with all the groups created. Each group has the index values of the
-                                        lines in that group. So lines[groups[0]] gives you the lines of the first group.
-
-    """
-
-    if lines is None:
-        return None
-    groups = []
-    for i in range(len(lines)):
-        # print("{}% done".format(i / len(lines) * 100))
-        set_in_group = False
-        x1 = x_lines[i]
-        y1 = y_lines[i]
-        angle = angle_lines[i]
-        for j in range(len(groups)):
-            angle_mean = np.mean(angle_lines[groups[j]])
-            x2 = np.mean(x_lines[groups[j]])
-            y2 = np.mean(y_lines[groups[j]])
-            if np.abs(angle - angle_mean) <= max_angle_diff:
-                x3 = (y2 - y1 + np.tan(angle_mean + np.pi / 2 + 1e-10) * x1 - np.tan(angle_mean + 1e-10) * x2) \
-                     / (np.tan(angle_mean + np.pi / 2 + 1e-10) - np.tan(angle_mean + 1e-10))
-                y3 = np.tan(angle_mean + 1e-10) * (x3 - x2) + y2
-                dist = np.sqrt((x3 - x1) ** 2 + (y3 - y1) ** 2)
-                if dist <= max_distance:  # img_after.shape[1] / 20
-                    set_in_group = True
-                    groups[j].append(i)
-        if not set_in_group:
-            groups.append([i])
-
-    for i in range(len(groups)):
-        groups[i] = np.unique(groups[i])
-    return groups
-
-
-def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, min_dist, max_dist, max_angle_diff=np.pi/8):
-
-    """
-    Here the function will look if groups of lines can together form a band which has roughly the same width as the
-    milling site. If multiple groups of lines can form bands, the one with the most individual lines will be outputted.
-    If these bands have the same number of lines in them, the function looks if they can be merged or not, if not only
-    the first band will be outputted.
-
-    Parameters:
-        groups (list):              The groups of individual lines outputted from group_single_lines.
-        x_lines (ndarray):          The x-centers of the lines.
-        y_lines (ndarray):          The y-centers of the lines.
-        angle_lines (ndarray):      The angles of the lines.
-        min_dist (float):           The minimum perpendicular distance between groups of lines in pixels to group them.
-        max_dist (float):           The maximum perpendicular distance between groups of lines in pixels to group them.
-        max_angle_diff (float):     The maximum difference in angles between groups of lines to group them.
-
-    Returns:
-        after_grouping (ndarray):   The index values of the lines of the biggest group after the grouping of groups.
-                                    These lines (probably) represent the edges of the milling site.
-
-    """
-
-    if groups is None:
-        return None
-    size_groups_combined = np.zeros((len(groups), len(groups)))
-    for i in range(len(groups)):
-        for j in np.arange(i + 1, len(groups), 1):
-            if np.abs(np.mean(angle_lines[groups[i]]) - np.mean(angle_lines[groups[j]])) <= max_angle_diff:
-                angle_mean = (np.mean(angle_lines[groups[i]]) * len(groups[i])
-                              + np.mean(angle_lines[groups[j]]) * len(groups[j])) / \
-                             (len(groups[i]) + len(groups[j]))
-                x1 = np.mean(x_lines[groups[i]])
-                y1 = np.mean(y_lines[groups[i]])
-                x2 = np.mean(x_lines[groups[j]])
-                y2 = np.mean(y_lines[groups[j]])
-                x3 = (y2 - y1 + np.tan(angle_mean + np.pi / 2 + 1e-10) * x1 - np.tan(angle_mean + 1e-10) * x2) / \
-                     (np.tan(angle_mean + np.pi / 2 + 1e-10) - np.tan(angle_mean + 1e-10))
-                y3 = np.tan(angle_mean + 1e-10) * (x3 - x2) + y2
-                dist = np.sqrt((x3 - x1) ** 2 + (y3 - y1) ** 2)
-                if (dist < max_dist) & (dist > min_dist):
-                    size_groups_combined[i, j] = (len(groups[i]) + len(groups[j]))
-
-    if np.max(size_groups_combined) > 0:
-        biggest = np.where(size_groups_combined == np.max(size_groups_combined))  
-        # which one consist of the most pieces of small lines
-        after_grouping = []
-        if len(biggest[0]) > 1:
-            merge_big_groups = np.zeros((len(biggest[0]), len(biggest[0])), dtype=bool)
-
-            for k in range(len(biggest[0])):
-                for m in np.arange(k + 1, len(biggest[0]), 1):
-                    angle_k = (np.mean(angle_lines[groups[biggest[0][k]]]) * len(groups[biggest[0][k]])
-                               + np.mean(angle_lines[groups[biggest[1][k]]]) * len(groups[biggest[1][k]])) / \
-                              (len(groups[biggest[0][k]]) + len(groups[biggest[1][k]]))
-                    angle_l = (np.mean(angle_lines[groups[biggest[0][m]]]) * len(groups[biggest[0][m]])
-                               + np.mean(angle_lines[groups[biggest[1][m]]]) * len(groups[biggest[1][m]])) / \
-                              (len(groups[biggest[0][m]]) + len(groups[biggest[1][m]]))
-                    if np.abs(angle_k - angle_l) <= max_angle_diff:
-                        merge_big_groups[k, m] = True
-            print("total groups used: {}".format(np.sum(merge_big_groups)))
-            if np.sum(merge_big_groups) != 0:
-                groups2 = []
-                for x, y in np.array(np.where(merge_big_groups)).T:
-                    set_in_group2 = False
-                    for r in range(len(groups2)):
-                        if x in groups2[r] and y in groups2[r]:
-                            set_in_group2 = True
-                        elif x in groups2[r] and y not in groups2[r]:
-                            groups2[r].append(y)
-                            set_in_group2 = True
-                        elif y in groups2[r] and x not in groups2[r]:
-                            groups2[r].append(x)
-                            set_in_group2 = True
-                    if not set_in_group2:
-                        groups2.append([x, y])
-                b = 0
-                final_group = 0
-                for r in range(len(groups2)):
-                    groups2[r] = np.unique(groups2[r])
-                    if len(groups2[r]) > b:
-                        b = len(groups2[r])
-                        final_group = r
-                for i in groups2[final_group]:
-                    for j in groups[biggest[0][i]]:
-                        after_grouping.append(j)
-                    for k in groups[biggest[1][i]]:
-                        after_grouping.append(k)
-
-            else:
-                # if no groups merge and there are multiple groups the biggest,
-                # just take the first one and hope for the best
-                for i in groups[biggest[0][0]]:
-                    after_grouping.append(i)
-                for j in groups[biggest[1][0]]:
-                    after_grouping.append(j)
-
-        else:  # there is only one group
-            for i in groups[biggest[0][0]]:
-                after_grouping.append(i)
-            for j in groups[biggest[1][0]]:
-                after_grouping.append(j)
-        after_grouping = np.unique(after_grouping)
-    else:  # there are no coupled line groups
-        after_grouping = np.array([])
-    return after_grouping
-
-
-def show_line_detection_steps(img_after, img_after_blurred, edges, lines, lines2, after_grouping):
-
-    """
-    Here the line detection steps are shown in images for visualization of the process.
-
-    Parameters:
-        img_after (ndarray):            The image after milling on which the line detection is executed.
-        img_after_blurred (ndarray):    The image after milling blurred and normalized.
-        edges (ndarray):                The edges image from the canny function in find_lines().
-        lines (ndarray):                The lines before combine_and_constraint_lines().
-        lines2 (ndarray):               The lines after combine_and_constraint_lines().
-        after_grouping (ndarray):       The end result of the lines which (probably) represent the milling site.
-    """
-
-    if lines is not None:
-        image = img_as_ubyte(img_after_blurred)
-        image = cv2.bitwise_not(image)
-        image = image * 0.8
-        image1 = deepcopy(image)
-        image2 = deepcopy(image)
-        image3 = deepcopy(image)
-
-        if len(after_grouping) > 0:
-            print("{} lines after grouping".format(len(after_grouping)))
-
-            for points in lines2[after_grouping]:
-                # Extracted points nested in the list
-                x1, y1, x2, y2 = points[0]
-                # Draw the lines joining the points on the original image
-                cv2.line(image3, (x1, y1), (x2, y2), 255, 2)
-        else:
-            print("0 lines after grouping")
-
-        for points in lines:
-            # Extracted points nested in the list
-            x1, y1, x2, y2 = points[0]
-            # Draw the lines joining the points on the original image
-            cv2.line(image, (x1, y1), (x2, y2), 255, 2)
-
-        for points in lines2:
-            # Extracted points nested in the list
-            x1, y1, x2, y2 = points[0]
-            # Draw the lines joining the points on the original image
-            cv2.line(image1, (x1, y1), (x2, y2), 255, 2)
-
-        fig, ax = plt.subplots(ncols=2, nrows=3)
-        ax[0, 0].imshow(img_after)
-        ax[0, 0].set_title('img_after')
-        ax[0, 1].imshow(edges)
-        ax[0, 1].set_title('the edges')
-        ax[1, 1].imshow(image1)
-        ax[1, 1].set_title('similar lines combined')
-        ax[1, 0].imshow(image)
-        ax[1, 0].set_title('all the lines')
-        ax[2, 0].imshow(image2)
-        ax[2, 0].set_title('after selection')
-        ax[2, 1].imshow(image3)
-        ax[2, 1].set_title('after grouping')
-        plt.show()
-    else:
-        print("No lines were detected so nothing can be shown.")
