@@ -65,7 +65,7 @@ blur = 25
 max_slices = 40
 cropping = True  # if true, the last images will be cropped to only the mask
 
-for nnn in np.arange(14, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+for nnn in np.arange(9, 13, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
     print("dataset nr. {}".format(nnn + 1))
     print(data_paths_before[nnn])
 
@@ -74,7 +74,7 @@ for nnn in np.arange(14, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
     data_before_milling = tiff.read_data(data_paths_before[nnn])
     meta_before = data_before_milling[channel_before[nnn]].metadata
 
-    img_before = z_projection_and_outlier_cutoff(nnn + 1, data_before_milling, max_slices, channel_before[nnn],
+    img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices, channel_before[nnn],
                                                  mode='max')
     del data_before_milling
 
@@ -82,7 +82,7 @@ for nnn in np.arange(14, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
     data_after_milling = tiff.read_data(data_paths_after[nnn])
     meta_after = data_after_milling[channel_after[nnn]].metadata
 
-    img_after = z_projection_and_outlier_cutoff(nnn + 1, data_after_milling, max_slices, channel_after[nnn], mode='max')
+    img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices, channel_after[nnn], mode='max')
     del data_after_milling
 
     print("Pixel sizes are the same: {}".format(meta_before["Pixel size"][0] == meta_after["Pixel size"][0]))
@@ -116,84 +116,48 @@ for nnn in np.arange(14, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
                                             max_dist=img_after.shape[1] / 5,
                                             min_dist=img_after.shape[1] / 20)
 
-    show_line_detection_steps(img_after, img_after_blurred, edges, lines, lines2, after_grouping)
+    # show_line_detection_steps(img_after, img_after_blurred, edges, lines, lines2, after_grouping)
 
-    x_lines3 = x_lines2[after_grouping]
-    y_lines3 = y_lines2[after_grouping]
-    lines3 = lines2[after_grouping]
-    angle_lines3 = angle_lines2[after_grouping]
+    mask_lines = create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_after.shape,
+                                  all_groups=False)
 
-    groups2 = group_single_lines(x_lines3, y_lines3, lines3, angle_lines3, max_distance=img_after.shape[1] / 20)
-    print(len(groups2))
-    if len(groups2) > 0:
-        x_left_mean = np.mean(x_lines3[groups2[0]])
-        y_left_mean = np.mean(y_lines3[groups2[0]])
-        angle_left_mean = np.mean(angle_lines3[groups2[0]])
-        x_right_mean = np.mean(x_lines3[groups2[1]])
-        y_right_mean = np.mean(y_lines3[groups2[1]])
-        angle_right_mean = np.mean(angle_lines3[groups2[1]])
-        # tan(a)*(x-x_mean) = y-y_mean
-        y1l = 0
-        y2l = img_after.shape[0]
-        x1l = (y1l - y_left_mean) / np.tan(angle_left_mean) + x_left_mean
-        x2l = (y2l - y_left_mean) / np.tan(angle_left_mean) + x_left_mean
-        y1r = 0
-        y2r = img_after.shape[0]
-        x1r = (y1r - y_right_mean) / np.tan(angle_right_mean) + x_right_mean
-        x2r = (y2r - y_right_mean) / np.tan(angle_right_mean) + x_right_mean
-
-        x_grid = np.arange(0, img_after.shape[1], 1)
-        y_grid = np.arange(0, img_after.shape[0], 1)
-        # xy_grid = np.meshgrid(x_grid, y_grid)
-        print(angle_left_mean * 2 / np.pi)
-        print(angle_right_mean * 2 / np.pi)
-
-        mask_lines = np.zeros(img_after.shape, dtype=bool)
-        for y in y_grid:
-            x_line_left = (y-y_left_mean) / np.tan(angle_left_mean) + x_left_mean
-            x_line_right = (y-y_right_mean) / np.tan(angle_right_mean) + x_right_mean
-            # y_line_left = np.tan(angle_left_mean) * (x - x_left_mean) + y_left_mean
-            # y_line_right = np.tan(angle_right_mean) * (x - x_right_mean) + y_right_mean
-            x_line_left = np.ones(mask_lines.shape[1]) * x_line_left
-            x_line_right = np.ones(mask_lines.shape[1]) * x_line_right
-            if x_line_left[0] < x_line_right[0]:
-                mask_lines[y, :] = (x_line_left < x_grid) & (x_grid < x_line_right)
-            else:
-                mask_lines[y, :] = (x_line_right < x_grid) & (x_grid < x_line_left)
-
-        image = img_as_ubyte(img_after_blurred)
-        image = cv2.bitwise_not(image)
-        image = image * 0.8
-        image1 = deepcopy(image)
-        cv2.line(image1, (int(x1r), y1r), (int(x2r), y2r), 255, 2)
-        cv2.line(image1, (int(x1l), y1l), (int(x2l), y2l), 255, 2)
-        plt.imshow(mask_lines * 2)
-        plt.show()
-    # bla
+    # fig2, ax2 = plt.subplots()
+    # ax2.imshow(mask_lines * img_after)
+    # ax2.set_title("with the first 2 groups")
 
     # calculating the difference between the two images and creating a mask
-    # mask = create_diff_mask(img_before_blurred, img_after_blurred, squaring=False)
-    # masked_img, extents = create_masked_img(img_after, mask, cropping)
-    # mask2 = create_diff_mask(img_before_blurred, img_after_blurred, squaring=True)
-    # masked_img2, extents2 = create_masked_img(img_after, mask2, cropping)
+    mask = create_diff_mask(img_before_blurred, img_after_blurred, squaring=False)
+
+    mask2 = create_diff_mask(img_before_blurred, img_after_blurred, squaring=True)
+    masked_img2, extents2 = create_masked_img(img_after, mask2, cropping)
+
+    mask_combined = combine_masks(mask, mask_lines)
+    masked_img, extents = create_masked_img(img_after, mask_combined, cropping)
+
+    fig3, ax3 = plt.subplots(ncols=4)
+    ax3[0].imshow(mask)
+    ax3[1].imshow(mask_lines)
+    ax3[2].imshow(mask_combined)
+    ax3[3].imshow((5.0*mask_lines + 5.0*mask_combined)*img_after_blurred)
+
+    # setting a threshold for the image_after within the mask
+    binary_end_result1 = create_binary_end_image(masked_img, threshold_end, open_close=True)
+    binary_end_result2 = create_binary_end_image(masked_img2, threshold_end, open_close=True)
+
+    print("binary image made")
+
+    # here I start with trying to detect circles
+    # key_points, yxr = detect_blobs(binary_end_result2, min_circ=0.6, min_area=8**2, plotting=False)
     #
-    # # setting a threshold for the image_after within the mask
-    # binary_end_result1 = create_binary_end_image(masked_img, threshold_end, open_close=False)
-    # binary_end_result2 = create_binary_end_image(masked_img2, threshold_end, open_close=True)
-    #
-    # print("binary image made")
-    #
-    # # here I start with trying to detect circles
-    # # key_points, yxr = detect_blobs(binary_end_result2, min_circ=0.6, min_area=8**2, plotting=False)
-    # #
-    # # print("circle detection complete")
-    #
-    # plot_end_results(nnn+1, img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img, masked_img2,
-    #                  binary_end_result1, binary_end_result2, cropping, extents, extents2)
-    #
-    # del img_before, img_before_blurred, img_after, img_after_blurred, \
-    #     mask, mask2, masked_img, masked_img2, binary_end_result1, \
-    #     binary_end_result2, meta_before, meta_after  # edges, lines,
+    # print("circle detection complete")
+
+    plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img,
+                     masked_img2, binary_end_result1, binary_end_result2, cropping, extents, extents2)
+
+    del img_before, img_before_blurred, img_after, img_after_blurred, \
+        mask, mask2, masked_img, masked_img2, binary_end_result1, \
+        binary_end_result2, meta_before, meta_after, edges, lines
     gc.collect()
 
     print("Successful!\n")
+# plt.show()

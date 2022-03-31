@@ -3,7 +3,7 @@ import logging
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage.filters import gaussian_filter
-from scipy.ndimage import binary_opening, binary_closing, binary_erosion  # binary_dilation
+from scipy.ndimage import binary_opening, binary_closing, binary_erosion, binary_dilation
 from scipy.signal import fftconvolve
 from skimage.draw import circle_perimeter
 from skimage.util import img_as_ubyte
@@ -12,7 +12,7 @@ from copy import deepcopy
 import cv2
 
 
-def z_projection_and_outlier_cutoff(e, data, max_slices, which_channel=0, outlier_cutoff=99, mode='max'):
+def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, outlier_cutoff=99, mode='max'):
 
     """
     Converts the Odemis data into an image for further use in the automatic ROI detection.
@@ -47,14 +47,14 @@ def z_projection_and_outlier_cutoff(e, data, max_slices, which_channel=0, outlie
         histo = np.cumsum(histo)
         histo = histo / histo[-1] * 100
         plc = np.min(np.where(histo > outlier_cutoff))
-        thr_out_before = bins[plc] / 2 + bins[plc + 1] / 2
+        thr_out = bins[plc] / 2 + bins[plc + 1] / 2
         # ax.plot(bins[1:]-(bins[2]-bins[1])/2, histo)
         # ax.set_title("Normalized cumulative histogram of #{}".format(e))
         # ax.set_ylabel("#pixels (%)")
         # ax.set_xlabel("Intensity value ()")
-        # print("outlier threshold is at {}".format(thr_out_before))
+        print("outlier threshold is at {}".format(thr_out))
         # print("max outlier value is {}".format(bins[-1]))
-        img[img > thr_out_before] = thr_out_before
+        img[img > thr_out] = thr_out
 
         if mode == 'max':
             img = np.max(img, axis=0)
@@ -73,14 +73,14 @@ def z_projection_and_outlier_cutoff(e, data, max_slices, which_channel=0, outlie
         histo = np.cumsum(histo)
         histo = histo / histo[-1] * 100
         plc = np.min(np.where(histo > outlier_cutoff))
-        thr_out_before = bins[plc] / 2 + bins[plc + 1] / 2
+        thr_out = bins[plc] / 2 + bins[plc + 1] / 2
         # ax.plot(bins[1:] - (bins[2] - bins[1]) / 2, histo)
         # ax.set_title("Normalized cumulative histogram of #{}".format(e))
         # ax.set_ylabel("#pixels (%)")
         # ax.set_xlabel("Intensity value ()")
-        # print("outlier threshold is at {}".format(thr_out_before))
+        # print("outlier threshold is at {}".format(thr_out))
         # print("max outlier value is {}".format(bins[-1]))
-        img[img > thr_out_before] = thr_out_before
+        img[img > thr_out] = thr_out
 
     return img
 
@@ -510,7 +510,7 @@ def group_single_lines(x_lines, y_lines, lines, angle_lines, max_distance, max_a
     return groups
 
 
-def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, min_dist, max_dist, max_angle_diff=np.pi / 8):
+def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, min_dist, max_dist, max_angle_diff=np.pi / 10):
     """
     Here the function will look if groups of lines can together form a band which has roughly the same width as the
     milling site. If multiple groups of lines can form bands, the one with the most individual lines will be outputted.
@@ -628,6 +628,9 @@ def show_line_detection_steps(img_after, img_after_blurred, edges, lines, lines2
         lines (ndarray):                The lines before combine_and_constraint_lines().
         lines2 (ndarray):               The lines after combine_and_constraint_lines().
         after_grouping (ndarray):       The end result of the lines which (probably) represent the milling site.
+
+    Returns:
+        Nothing, only shows the images with matplotlib.pyplot.
     """
 
     if lines is not None:
@@ -674,9 +677,88 @@ def show_line_detection_steps(img_after, img_after_blurred, edges, lines, lines2
         ax[2, 0].set_title('after selection')
         ax[2, 1].imshow(image3)
         ax[2, 1].set_title('after grouping')
-        plt.show()
+        # plt.show()
     else:
         print("No lines were detected so nothing can be shown.")
+
+
+def create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_shape, inv_max_dist=20,
+                     max_angle=np.pi/8, all_groups=False):
+
+    """
+    Here a mask is created with the lines found in the line detection. The lines after grouping, are split into two
+    groups (left and right) and an average position and angle of both groups is used for creating the boundaries
+    of the mask.
+
+    Parameters:
+        after_grouping (ndarray):   The indexes of the lines outputted of the line detection.
+        x_lines2 (ndarray):         The center x-positions of the lines.
+        y_lines2 (ndarray):         The center y-positions of the lines.
+        lines2 (ndarray):           The end points of the lines.
+        angle_lines2 (ndarray):     The angles of the lines.
+        img_shape (tuple):          The shape of the image after milling.
+        inv_max_dist (int):         For grouping the lines in left and right, the lines within a group cannot have a
+                                    bigger distance then img_shape[1]/inv_max_dist.
+        max_angle (float):          The maximum difference in angles lines can have within a group.
+        all_groups (bool):          If there are more than 2 groups outputted after grouping, you can decide to use
+                                    the first two groups or all groups. If set to True, you use all groups, and you keep
+                                    grouping the lines together until only 2 groups are left (by increasing the max
+                                    distance iteratively). If set to False, you only use the first two groups.
+
+    Returns:
+        mask_lines (ndarray):
+    """
+    if after_grouping is None:
+        logging.warning("No lines were outputted from the line detection, so no line mask can be created.")
+        return np.zeros(img_shape, dtype=bool)
+
+    if len(after_grouping) == 0:
+        logging.warning("No lines were outputted from the line detection, so no line mask can be created.")
+        return np.zeros(img_shape, dtype=bool)
+
+    x_lines3 = x_lines2[after_grouping]
+    y_lines3 = y_lines2[after_grouping]
+    lines3 = lines2[after_grouping]
+    angle_lines3 = angle_lines2[after_grouping]
+
+    groups2 = group_single_lines(x_lines3, y_lines3, lines3, angle_lines3,
+                                 max_distance=img_shape[1] / inv_max_dist, max_angle_diff=max_angle)
+
+    if all_groups:
+        while len(groups2) > 2:
+            inv_max_dist -= 1
+            groups2 = group_single_lines(x_lines3, y_lines3, lines3, angle_lines3,
+                                         max_distance=img_shape[1] / inv_max_dist, max_angle_diff=max_angle)
+
+    print(len(groups2))
+    if len(groups2) > 1:
+        x_left_mean = np.mean(x_lines3[groups2[0]])
+        y_left_mean = np.mean(y_lines3[groups2[0]])
+        angle_left_mean = np.mean(angle_lines3[groups2[0]])
+        x_right_mean = np.mean(x_lines3[groups2[1]])
+        y_right_mean = np.mean(y_lines3[groups2[1]])
+        angle_right_mean = np.mean(angle_lines3[groups2[1]])
+        # tan(a)*(x-x_mean) = y-y_mean
+
+        x_grid = np.arange(0, img_shape[1], 1)
+        y_grid = np.arange(0, img_shape[0], 1)
+
+        mask_lines = np.zeros(img_shape, dtype=bool)
+        for y in y_grid:
+            x_line_left = (y-y_left_mean) / np.tan(angle_left_mean) + x_left_mean
+            x_line_right = (y-y_right_mean) / np.tan(angle_right_mean) + x_right_mean
+            x_line_left = np.ones(mask_lines.shape[1]) * x_line_left
+            x_line_right = np.ones(mask_lines.shape[1]) * x_line_right
+            if x_line_left[0] < x_line_right[0]:
+                mask_lines[y, :] = (x_line_left < x_grid) & (x_grid < x_line_right)
+            else:
+                mask_lines[y, :] = (x_line_right < x_grid) & (x_grid < x_line_left)
+
+        return mask_lines
+
+    else:
+        logging.warning("The lines were wrongly grouped in the creating of the mask in create_line_mask().")
+        return None
 
 
 def create_diff_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, open_iter=12, ero_iter=0,
@@ -720,6 +802,33 @@ def create_diff_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, 
         mask[y_min:y_max, x_min:x_max] = True
 
     return mask
+
+
+def combine_masks(mask_diff, mask_lines, thres_diff=70, thres_lines=5, y_cut_off=6, it=75):
+    mask_combined = mask_lines * mask_diff
+
+    if np.sum(mask_lines) > 0:
+        overlap_lines = np.sum(mask_combined) / np.sum(mask_lines) * 100
+    else:
+        overlap_lines = 0
+
+    if np.sum(mask_diff) > 0:
+        overlap_diff = np.sum(mask_combined) / np.sum(mask_diff) * 100
+    else:
+        overlap_diff = 0
+
+    print("The overlap with mask diff is {}%.".format(overlap_diff))
+    print("The overlap with mask lines is {}%.".format(overlap_lines))
+    print("The line mask will be used : {}".format((overlap_diff > thres_diff) | (overlap_lines > thres_lines)))
+    if (overlap_diff > thres_diff) | (overlap_lines > thres_lines):
+        mask_combined[:int(mask_combined.shape[0]/y_cut_off), :] = False
+        mask_combined[-int(mask_combined.shape[0]/y_cut_off):, :] = False
+        mask_combined = binary_dilation(mask_combined, iterations=it) * mask_lines
+        return mask_combined
+    else:
+        mask_diff[:int(mask_diff.shape[0]/y_cut_off), :] = False
+        mask_diff[-int(mask_diff.shape[0] / y_cut_off):, :] = False
+        return mask_diff
 
 
 def create_masked_img(img_after, mask, cropping=False):
@@ -869,7 +978,7 @@ def detect_blobs(binary_end_result2, min_circ=0, max_circ=1, min_area=0, max_are
     return key_points, yxr
 
 
-def plot_end_results(e, img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img, masked_img2,
+def plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img, masked_img2,
                      binary_end_result1, binary_end_result2, cropping, extents, extents2):
 
     """
@@ -910,7 +1019,7 @@ def plot_end_results(e, img_before, img_after, img_before_blurred, img_after_blu
     cv2.line(img_after_blurred, (x_min, y_max), (x_max, y_max), ints_after, 5)
     cv2.line(img_after_blurred, (x_min, y_min), (x_min, y_max), ints_after, 5)
 
-    fig, ax = plt.subplots(4, 2, figsize=(15, 15))  # , sharey=True, sharex=True)  # sharex=True, sharey=True, dpi=600
+    fig, ax = plt.subplots(4, 2)  # , figsize=(15, 15))  # , sharey=True, sharex=True)  , dpi=600)
 
     ax[0, 0].imshow(img_before)
     ax[0, 0].set_title("before")
@@ -938,4 +1047,3 @@ def plot_end_results(e, img_before, img_after, img_before_blurred, img_after_blu
     # plt.savefig("/home/victoria/Documents/Lars/figures/data nr{} max ip.png".format(e), dpi=300)  # , dpi=600)
     plt.show()
     # del fig, ax
-
