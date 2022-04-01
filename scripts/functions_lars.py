@@ -823,7 +823,23 @@ def combine_masks(mask_diff, mask_lines, thres_diff=70, thres_lines=5, y_cut_off
     if (overlap_diff > thres_diff) | (overlap_lines > thres_lines):
         mask_combined[:int(mask_combined.shape[0]/y_cut_off), :] = False
         mask_combined[-int(mask_combined.shape[0]/y_cut_off):, :] = False
+
+        # squaring the mask
+        index_mask = np.where(mask_combined)
+
+        if len(index_mask[0]) != 0:
+            x_min = np.min(index_mask[1])
+            y_min = np.min(index_mask[0])
+            x_max = np.max(index_mask[1])
+            y_max = np.max(index_mask[0])
+            mask_combined[y_min:y_max, x_min:x_max] = True
+
+        # dilate the mask to the boundary lines
         mask_combined = binary_dilation(mask_combined, iterations=it) * mask_lines
+        mask_combined = binary_dilation(mask_combined, structure=np.array([[0, 0, 0], [1, 1, 1], [0, 0, 0]]),
+                                        iterations=200) * mask_lines
+        mask_combined = binary_erosion(mask_combined, structure=np.array([[0, 0, 0], [1, 1, 1], [0, 0, 0]]),
+                                       iterations=10)
         return mask_combined
     else:
         mask_diff[:int(mask_diff.shape[0]/y_cut_off), :] = False
@@ -870,7 +886,7 @@ def create_masked_img(img_after, mask, cropping=False):
     return masked_img, extents
 
 
-def create_binary_end_image(masked_img, threshold=0.25, open_close=True):
+def create_binary_end_image(mask, masked_img, threshold=0.25, open_close=True, rid_of_back_signal=True):
 
     """
     To apply a threshold on the image signal within the mask.
@@ -878,9 +894,11 @@ def create_binary_end_image(masked_img, threshold=0.25, open_close=True):
     The result is thought to be signal instead of noise.
 
     Parameters:
+        mask (ndarray):                 The mask with which the masked_img was made.
         masked_img (ndarray):           The image signal within the mask (output from create_masked_img).
         threshold (float):              The threshold for signal detection (just a simple img >= threshold).
         open_close (bool):              If the binary operations should be executed or not.
+        rid_of_back_signal (bool):      All the blobs touching the boundaries, will be removed.
 
     Returns:
         binary_end_result (ndarray):    A binary image which shows the thought to be signal in the masked image.
@@ -891,8 +909,24 @@ def create_binary_end_image(masked_img, threshold=0.25, open_close=True):
     # getting rid of too small ROIs and noise after the threshold
     if open_close:
         binary_end_result = binary_closing(binary_opening(binary_closing(binary_end_result, iterations=1),
-                                                          iterations=4), iterations=4)
-    return binary_end_result
+                                                          iterations=4), iterations=8)
+    if rid_of_back_signal:
+        index_mask = np.where(mask)
+        if len(index_mask[0]) != 0:
+            x_min = np.min(index_mask[1])
+            y_min = np.min(index_mask[0])
+            x_max = np.max(index_mask[1])
+            y_max = np.max(index_mask[0])
+            mask = mask[y_min:y_max, x_min:x_max]
+        bound = binary_end_result*(1.0*mask-1.0*binary_erosion(mask, iterations=10))
+
+        minus = binary_dilation(bound, mask=binary_end_result, iterations=0)*binary_end_result
+        binary_end_result_without = 1.0*binary_end_result - 1.0*minus
+        binary_end_result_without = np.array(binary_end_result_without, dtype=bool)
+    else:
+        binary_end_result_without = binary_end_result
+
+    return binary_end_result, binary_end_result_without
 
 
 def detect_blobs(binary_end_result2, min_circ=0, max_circ=1, min_area=0, max_area=np.inf, min_in=0, max_in=1,
