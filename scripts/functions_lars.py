@@ -1,5 +1,4 @@
 import logging
-
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage.filters import gaussian_filter
@@ -677,7 +676,7 @@ def show_line_detection_steps(img_after, img_after_blurred, edges, lines, lines2
         ax[2, 0].set_title('after selection')
         ax[2, 1].imshow(image3)
         ax[2, 1].set_title('after grouping')
-        # plt.show()
+        plt.show()
     else:
         print("No lines were detected so nothing can be shown.")
 
@@ -804,8 +803,36 @@ def create_diff_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, 
     return mask
 
 
-def combine_masks(mask_diff, mask_lines, thres_diff=70, thres_lines=5, y_cut_off=6, it=75):
+def combine_masks(mask_diff, mask_lines, mask_lines_all, thres_diff=70, thres_lines=5, y_cut_off=6, it=75,
+                  squaring=True):
+
+    """
+    Here we look if the mask from the difference in intensity and the mask from the line detection can be combined.
+    The overlap between the masks is used as a measure to see if they can be combined or not.
+    If possible, the masks are combined and binary dilated with the mask lines as constraint.
+    If not the mask from the difference is used and optionally squared.
+
+    Parameters:
+        mask_diff (ndarray):        The mask from create_diff_mask().
+        mask_lines (ndarray):       The mask from create_line_mask() with only the first 2 groups.
+        mask_lines_all (ndarray):   The mask from create_line_mask() with all the groups.
+        thres_diff (int):           The minimal % in overlap for the mask_diff.
+        thres_lines (int):          The minimal % in overlap for the mask_lines.
+        y_cut_off (int):            mask[:mask.shape[1]/y_cut_off, :] = False
+                                    mask[-mask.shape[1]/y_cut_off:, :] = False
+        it (int):                   How much you want the combined mask to be dilated in the y-direction
+                                    (the x-direction will be fully filled to the mask_lines constraint).
+        squaring (bool):            If the masks cannot be combined, set to True if you want the mask_diff to be a
+                                    square. It will not square if the mask is too big which indicates that there are
+                                    probably multiple milling sites or the masking went wrong.
+
+    Returns:
+        mask_combined (ndarray):    The masks combined if possible or the mask_diff.
+        combined (bool):            A boolean that indicates if the masks are combined or not.
+    """
+
     mask_combined = mask_lines * mask_diff
+    mask_combined_all = mask_lines_all * mask_diff
 
     if np.sum(mask_lines) > 0:
         overlap_lines = np.sum(mask_combined) / np.sum(mask_lines) * 100
@@ -817,9 +844,24 @@ def combine_masks(mask_diff, mask_lines, thres_diff=70, thres_lines=5, y_cut_off
     else:
         overlap_diff = 0
 
-    print("The overlap with mask diff is {}%.".format(overlap_diff))
-    print("The overlap with mask lines is {}%.".format(overlap_lines))
-    print("The line mask will be used : {}".format((overlap_diff > thres_diff) | (overlap_lines > thres_lines)))
+    if np.sum(mask_lines_all) > 0:
+        overlap_lines_all = np.sum(mask_combined_all) / np.sum(mask_lines_all) * 100
+    else:
+        overlap_lines_all = 0
+
+    if np.sum(mask_diff) > 0:
+        overlap_diff_all = np.sum(mask_combined_all) / np.sum(mask_diff) * 100
+    else:
+        overlap_diff_all = 0
+
+    if overlap_diff_all > overlap_diff:
+        mask_combined = mask_combined_all
+        overlap_diff = overlap_diff_all
+        overlap_lines = overlap_lines_all
+
+    # print("The overlap with mask diff is {}%.".format(overlap_diff))
+    # print("The overlap with mask lines is {}%.".format(overlap_lines))
+    # print("The line mask will be used : {}".format((overlap_diff > thres_diff) | (overlap_lines > thres_lines)))
     if (overlap_diff > thres_diff) | (overlap_lines > thres_lines):
         mask_combined[:int(mask_combined.shape[0]/y_cut_off), :] = False
         mask_combined[-int(mask_combined.shape[0]/y_cut_off):, :] = False
@@ -840,11 +882,25 @@ def combine_masks(mask_diff, mask_lines, thres_diff=70, thres_lines=5, y_cut_off
                                         iterations=200) * mask_lines
         mask_combined = binary_erosion(mask_combined, structure=np.array([[0, 0, 0], [1, 1, 1], [0, 0, 0]]),
                                        iterations=10)
-        return mask_combined
+        return mask_combined, True
     else:
         mask_diff[:int(mask_diff.shape[0]/y_cut_off), :] = False
         mask_diff[-int(mask_diff.shape[0] / y_cut_off):, :] = False
-        return mask_diff
+        index_mask = np.where(mask_diff)
+
+        # squaring the mask
+        if squaring & (len(index_mask[0]) != 0):
+            x_min = np.min(index_mask[1])
+            y_min = np.min(index_mask[0])
+            x_max = np.max(index_mask[1])
+            y_max = np.max(index_mask[0])
+            # if the mask is too big, then there are maybe multiple milling sites so squaring will not be useful
+            if x_max-x_min <= mask_diff.shape[1]/3:
+                mask_diff[y_min:y_max, x_min:x_max] = True
+        else:
+            mask_diff = binary_dilation(mask_diff, iterations=10)
+
+        return mask_diff, False
 
 
 def create_masked_img(img_after, mask, cropping=False):

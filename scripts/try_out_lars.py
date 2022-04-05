@@ -62,10 +62,10 @@ channel_after = np.zeros(ll, dtype=int)
 threshold_mask = 0.3
 threshold_end = 0.25
 blur = 25
-max_slices = 40
+max_slices = 30
 cropping = True  # if true, the last images will be cropped to only the mask
 
-for nnn in np.arange(10, 13, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+for nnn in np.arange(2, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
     print("dataset nr. {}".format(nnn + 1))
     print(data_paths_before[nnn])
 
@@ -120,7 +120,8 @@ for nnn in np.arange(10, 13, 1, dtype=int):  # range(len(data_paths_after)) OR n
 
     mask_lines = create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_after.shape,
                                   all_groups=False)
-
+    mask_lines_all = create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_after.shape,
+                                      all_groups=True)
     # fig2, ax2 = plt.subplots()
     # ax2.imshow(mask_lines * img_after)
     # ax2.set_title("with the first 2 groups")
@@ -131,23 +132,29 @@ for nnn in np.arange(10, 13, 1, dtype=int):  # range(len(data_paths_after)) OR n
     mask2 = create_diff_mask(img_before_blurred, img_after_blurred, squaring=True)
     masked_img2, extents2 = create_masked_img(img_after, mask2, cropping)
 
-    mask_combined = combine_masks(mask, mask_lines)
+    mask_combined, combined = combine_masks(mask, mask_lines, mask_lines_all)
+    # if not combined:
+    #     mask_lines = create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_after.shape,
+    #                                   all_groups=True)
+    #     mask_combined, combined = combine_masks(mask, mask_lines)
+
     masked_img, extents = create_masked_img(img_after, mask_combined, cropping)
 
-    fig3, ax3 = plt.subplots(ncols=4)
-    ax3[0].imshow(mask)
-    ax3[1].imshow(mask_lines)
-    ax3[2].imshow(mask_combined)
-    ax3[3].imshow((5.0*mask_lines + 5.0*mask_combined)*img_after_blurred)
+    # fig3, ax3 = plt.subplots(ncols=4)
+    # ax3[0].imshow(mask)
+    # ax3[1].imshow(mask_lines)
+    # ax3[2].imshow(mask_combined)
+    # ax3[3].imshow((5.0*mask_lines + 5.0*mask_combined)*img_after_blurred)
 
     # setting a threshold for the image_after within the mask
-    binary_end_1b, binary_end_result1 = create_binary_end_image(mask_combined, masked_img, threshold_end, open_close=True)
+    binary_end_1b, binary_end_result1 = create_binary_end_image(mask_combined, masked_img, threshold_end,
+                                                                open_close=True)
     binary_end_2b, binary_end_result2 = create_binary_end_image(mask2, masked_img2, threshold_end, open_close=True)
 
-    fig, ax = plt.subplots(ncols=2)
-    ax[0].imshow(binary_end_result1)
-    ax[1].imshow(binary_end_1b)
-    plt.show()
+    # fig, ax = plt.subplots(ncols=2)
+    # ax[0].imshow(binary_end_result1)
+    # ax[1].imshow(binary_end_1b)
+    # plt.show()
     print("binary image made")
 
     # here I start with trying to detect circles
@@ -155,8 +162,8 @@ for nnn in np.arange(10, 13, 1, dtype=int):  # range(len(data_paths_after)) OR n
     #
     # print("circle detection complete")
 
-    plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img,
-                     masked_img2, binary_end_result1, binary_end_result2, cropping, extents, extents2)
+    # plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img,
+    #                  masked_img2, binary_end_result1, binary_end_result2, cropping, extents, extents2)
 
     del img_before, img_before_blurred, img_after, img_after_blurred, \
         mask, mask2, masked_img, masked_img2, binary_end_result1, \
