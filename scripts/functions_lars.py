@@ -249,6 +249,50 @@ def blur_and_norm(img_before, img_after, blur=25):
     return img_before, img_after, img_before_blurred, img_after_blurred
 
 
+def create_diff_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, open_iter=12, ero_iter=0,
+                     squaring=False):
+
+    """
+    Here a mask is created with looking at the difference in intensities between the blurred images before and after
+    milling. A threshold is set for the difference and a binary opening is performed to get rid of too small
+    masks (optional but recommended). A binary erosion and a squaring of the mask also can be done.
+
+    Parameters:
+        img_before_blurred (ndarray):   The blurred image before milling.
+        img_after_blurred (ndarray):    The blurred image after milling.
+        threshold_mask (float):         The threshold at which the difference in intensities needs to be to pass.
+        open_iter (int):                How many iterations of binary opening you want to perform.
+        ero_iter (int):                 How many iterations of binary erosion you want to perform.
+        squaring (bool):                If set to true, a square is taken around the mask becomes the mask itself.
+
+    Returns:
+        mask (ndarray):                 The mask created in the form of a boolean numpy array.
+    """
+
+    # calculating the difference between the two images and creating a mask
+    diff = img_before_blurred - 1.5 * img_after_blurred  # times 1.5 to account for intensity differences (more robust)
+    mask = diff >= threshold_mask
+    if open_iter >= 1:
+        mask = binary_opening(mask, iterations=open_iter)  # First opening int(blur / 2)
+    if ero_iter >= 1:
+        # if the edges give too much signal we can erode the mask a bit more
+        mask = binary_erosion(mask, iterations=ero_iter)
+
+    # to crop and/or square the image around the ROI if possible and wanted: cropping = True and/or squaring = True
+    index_mask = np.where(mask)
+
+    # squaring the mask
+    if squaring & (len(index_mask[0]) != 0):
+        x_min = np.min(index_mask[1])
+        y_min = np.min(index_mask[0])
+        x_max = np.max(index_mask[1])
+        y_max = np.max(index_mask[0])
+        # if x_max - x_min < mask.shape[1]/3:
+        mask[y_min:y_max, x_min:x_max] = True
+
+    return mask
+
+
 def find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x'):
     """
     Find the rough position of the milling site in x or y direction. This is done by projection the images on one of
@@ -357,7 +401,7 @@ def calculate_angles(lines):
 
 def combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines, mid_milling_site, img_shape,
                                  x_width_constraint=1 / 4, y_width_constraint=3 / 4, angle_constraint=np.pi / 7,
-                                 max_dist=1 / 30, max_diff_angle=np.pi / 12):
+                                 max_dist=1 / 25, max_diff_angle=np.pi / 10):
     """
     Here lines which are roughly at the same spot and angle are combined in one line.
     Next to that, also some constraints can be given for which lines to pick out for further processing.
@@ -460,7 +504,7 @@ def combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines, mid_milli
     return x_lines, y_lines, lines, angle_lines
 
 
-def group_single_lines(x_lines, y_lines, lines, angle_lines, max_distance, max_angle_diff=np.pi / 16):
+def group_single_lines(x_lines, y_lines, lines, angle_lines, max_distance, max_angle_diff=np.pi / 12):
     """
     Here individual lines are grouped together based on their angle and perpendicular distance between each other.
     The lines here are regarded as lines with infinite length so that always the perpendicular distance between lines
@@ -509,18 +553,20 @@ def group_single_lines(x_lines, y_lines, lines, angle_lines, max_distance, max_a
     return groups
 
 
-def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, min_dist, max_dist, max_angle_diff=np.pi / 10):
+def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, x_pos_mil, min_dist, max_dist,
+                           max_angle_diff=np.pi / 8):
     """
     Here the function will look if groups of lines can together form a band which has roughly the same width as the
     milling site. If multiple groups of lines can form bands, the one with the most individual lines will be outputted.
-    If these bands have the same number of lines in them, the function looks if they can be merged or not, if not only
-    the first band will be outputted.
+    If these bands have the same number of lines in them, the function looks if they can be merged or not, if not,
+    the band closest to the estimated milling site will be used.
 
     Parameters:
         groups (list):              The groups of individual lines outputted from group_single_lines.
         x_lines (ndarray):          The x-centers of the lines.
         y_lines (ndarray):          The y-centers of the lines.
         angle_lines (ndarray):      The angles of the lines.
+        x_pos_mil (int):            The x position of the milling site found by find_x_or_y_pos_milling_site().
         min_dist (float):           The minimum perpendicular distance between groups of lines in pixels to group them.
         max_dist (float):           The maximum perpendicular distance between groups of lines in pixels to group them.
         max_angle_diff (float):     The maximum difference in angles between groups of lines to group them.
@@ -563,10 +609,24 @@ def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, min_dist, max_
                     angle_k = (np.mean(angle_lines[groups[biggest[0][k]]]) * len(groups[biggest[0][k]])
                                + np.mean(angle_lines[groups[biggest[1][k]]]) * len(groups[biggest[1][k]])) / \
                               (len(groups[biggest[0][k]]) + len(groups[biggest[1][k]]))
-                    angle_l = (np.mean(angle_lines[groups[biggest[0][m]]]) * len(groups[biggest[0][m]])
+                    angle_m = (np.mean(angle_lines[groups[biggest[0][m]]]) * len(groups[biggest[0][m]])
                                + np.mean(angle_lines[groups[biggest[1][m]]]) * len(groups[biggest[1][m]])) / \
                               (len(groups[biggest[0][m]]) + len(groups[biggest[1][m]]))
-                    if np.abs(angle_k - angle_l) <= max_angle_diff:
+                    x_k = (np.mean(x_lines[groups[biggest[0][k]]]) * len(groups[biggest[0][k]])
+                           + np.mean(x_lines[groups[biggest[1][k]]])*len(groups[biggest[1][k]])) / \
+                          (len(groups[biggest[0][k]])+len(groups[biggest[1][k]]))
+                    y_k = (np.mean(y_lines[groups[biggest[0][k]]]) * len(groups[biggest[0][k]])
+                           + np.mean(y_lines[groups[biggest[1][k]]]) * len(groups[biggest[1][k]])) / \
+                          (len(groups[biggest[0][k]]) + len(groups[biggest[1][k]]))
+                    x_m = (np.mean(x_lines[groups[biggest[0][m]]]) * len(groups[biggest[0][m]])
+                           + np.mean(x_lines[groups[biggest[1][m]]])*len(groups[biggest[1][m]])) / \
+                          (len(groups[biggest[0][m]])+len(groups[biggest[1][m]]))
+                    y_m = (np.mean(y_lines[groups[biggest[0][m]]]) * len(groups[biggest[0][m]])
+                           + np.mean(y_lines[groups[biggest[1][m]]]) * len(groups[biggest[1][m]])) / \
+                          (len(groups[biggest[0][m]]) + len(groups[biggest[1][m]]))
+                    distance = np.sqrt((x_k-x_m)**2 + (y_k-y_m)**2)
+
+                    if (np.abs(angle_k - angle_m) <= max_angle_diff) & (distance <= min_dist):
                         merge_big_groups[k, m] = True
             print("total groups used: {}".format(np.sum(merge_big_groups)))
             if np.sum(merge_big_groups) != 0:
@@ -599,10 +659,19 @@ def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, min_dist, max_
 
             else:
                 # if no groups merge and there are multiple groups the biggest,
-                # just take the first one and hope for the best
-                for i in groups[biggest[0][0]]:
+                # just take the first one and hope for the best, THIS DOESN'T WORK
+                # if no groups merge, chose the one closest to the x_pos of the milling site.
+                r = 0
+                d = np.inf
+                for i in range(len(biggest[0])):
+                    x_mean = (np.mean(x_lines[groups[biggest[0][i]]]) + np.mean(x_lines[groups[biggest[1][i]]]))/2
+                    if np.abs(x_mean-x_pos_mil) < d:
+                        r = i
+                        d = np.abs(x_mean-x_pos_mil)
+
+                for i in groups[biggest[0][r]]:
                     after_grouping.append(i)
-                for j in groups[biggest[1][0]]:
+                for j in groups[biggest[1][r]]:
                     after_grouping.append(j)
 
         else:  # there is only one group
@@ -760,49 +829,6 @@ def create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, i
         return None
 
 
-def create_diff_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, open_iter=12, ero_iter=0,
-                     squaring=False):
-
-    """
-    Here a mask is created with looking at the difference in intensities between the blurred images before and after
-    milling. A threshold is set for the difference and a binary opening is performed to get rid of too small
-    masks (optional but recommended). A binary erosion also can be done but probably not necessary.
-
-    Parameters:
-        img_before_blurred (ndarray):   The blurred image before milling.
-        img_after_blurred (ndarray):    The blurred image after milling.
-        threshold_mask (float):         The threshold at which the difference in intensities needs to be to pass.
-        open_iter (int):                How many iterations of binary opening you want to perform.
-        ero_iter (int):                 How many iterations of binary erosion you want to perform.
-        squaring (bool):                If set to true, a square is taken around the mask becomes the mask itself.
-
-    Returns:
-        mask (ndarray):                 The mask created in the form of a boolean numpy array.
-    """
-
-    # calculating the difference between the two images and creating a mask
-    diff = img_before_blurred - 1.5 * img_after_blurred  # times 1.5 to account for intensity differences (more robust)
-    mask = diff >= threshold_mask
-    if open_iter >= 1:
-        mask = binary_opening(mask, iterations=open_iter)  # First opening int(blur / 2)
-    if ero_iter >= 1:
-        # if the edges give too much signal we can erode the mask a bit more
-        mask = binary_erosion(mask, iterations=ero_iter)
-
-    # to crop and/or square the image around the ROI if possible and wanted: cropping = True and/or squaring = True
-    index_mask = np.where(mask)
-
-    # squaring the mask
-    if squaring & (len(index_mask[0]) != 0):
-        x_min = np.min(index_mask[1])
-        y_min = np.min(index_mask[0])
-        x_max = np.max(index_mask[1])
-        y_max = np.max(index_mask[0])
-        mask[y_min:y_max, x_min:x_max] = True
-
-    return mask
-
-
 def combine_masks(mask_diff, mask_lines, mask_lines_all, thres_diff=70, thres_lines=5, y_cut_off=6, it=75,
                   squaring=True):
 
@@ -879,7 +905,7 @@ def combine_masks(mask_diff, mask_lines, mask_lines_all, thres_diff=70, thres_li
         # dilate the mask to the boundary lines
         mask_combined = binary_dilation(mask_combined, iterations=it) * mask_lines
         mask_combined = binary_dilation(mask_combined, structure=np.array([[0, 0, 0], [1, 1, 1], [0, 0, 0]]),
-                                        iterations=200) * mask_lines
+                                        iterations=0, mask=mask_lines)
         mask_combined = binary_erosion(mask_combined, structure=np.array([[0, 0, 0], [1, 1, 1], [0, 0, 0]]),
                                        iterations=10)
         return mask_combined, True
@@ -965,7 +991,7 @@ def create_binary_end_image(mask, masked_img, threshold=0.25, open_close=True, r
     # getting rid of too small ROIs and noise after the threshold
     if open_close:
         binary_end_result = binary_closing(binary_opening(binary_closing(binary_end_result, iterations=1),
-                                                          iterations=4), iterations=8)
+                                                          iterations=4), iterations=6)
     if rid_of_back_signal:
         index_mask = np.where(mask)
         if len(index_mask[0]) != 0:
@@ -1007,7 +1033,7 @@ def detect_blobs(binary_end_result2, min_circ=0, max_circ=1, min_area=0, max_are
 
     Returns:
         key_points (tuple):             The raw output of the opencv blob detection.
-        yxr (ndarray):                  Only the (y,x) position and the radius of the blob in a numpy array.
+        yxr (ndarray):                  Only the y,x position and the radius of the blob in a numpy array.
 
     """
 
@@ -1094,16 +1120,21 @@ def plot_end_results(img_before, img_after, img_before_blurred, img_after_blurre
     """
 
     # plotting the results
-    x_min = extents2[0]
-    x_max = extents2[1]
-    y_min = extents2[3]
-    y_max = extents2[2]
+    x_min = extents[0]
+    x_max = extents[1]
+    y_min = extents[3]
+    y_max = extents[2]
+    img_before_blurred = deepcopy(img_after_blurred)
     ints_before = np.max(img_before_blurred) * 1.1
     ints_after = np.max(img_after_blurred) * 1.1
     cv2.line(img_before_blurred, (x_min, y_min), (x_max, y_min), ints_before, 5)
     cv2.line(img_before_blurred, (x_max, y_min), (x_max, y_max), ints_before, 5)
     cv2.line(img_before_blurred, (x_min, y_max), (x_max, y_max), ints_before, 5)
     cv2.line(img_before_blurred, (x_min, y_min), (x_min, y_max), ints_before, 5)
+    x_min = extents2[0]
+    x_max = extents2[1]
+    y_min = extents2[3]
+    y_max = extents2[2]
     cv2.line(img_after_blurred, (x_min, y_min), (x_max, y_min), ints_after, 5)
     cv2.line(img_after_blurred, (x_max, y_min), (x_max, y_max), ints_after, 5)
     cv2.line(img_after_blurred, (x_min, y_max), (x_max, y_max), ints_after, 5)
