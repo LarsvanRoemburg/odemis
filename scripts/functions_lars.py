@@ -7,8 +7,64 @@ from scipy.signal import fftconvolve
 from skimage.draw import circle_perimeter
 from skimage.util import img_as_ubyte
 from skimage.feature import canny
+from skimage.morphology import disk
+from skimage.filters.rank import gradient
 from copy import deepcopy
 import cv2
+
+
+def find_focus_z_slice_and_outlier_cutoff(data, num_slices=5, disk_size=5, which_channel=0, outlier_cutoff=99,
+                                          mode='max'):
+
+    if data[0].shape[0] == 1:
+        num_z = len(data[which_channel][0][0])
+        print("#z-slices: {}".format(num_z))
+        dat = data[which_channel][0][0]
+        sharp = np.zeros(dat.shape[0])
+        selection_element = disk(disk_size)
+        histo, bins = np.histogram(dat, bins=2000)
+        histo = np.cumsum(histo)
+        histo = histo / histo[-1] * 100
+        plc = np.min(np.where(histo > outlier_cutoff))
+        thr_out = bins[plc] / 2 + bins[plc + 1] / 2
+        print("outlier threshold is at {}".format(thr_out))
+        for i in range(dat.shape[0]):
+            print(i)
+            dat[i][dat[i] > thr_out] = thr_out
+            img = dat[i]
+            # img[img > thr_out] = thr_out
+            img = gaussian_filter(img, sigma=5)
+            img = np.array(img / np.max(img) * 255, dtype=np.uint8)
+            sharp[i] = np.mean(gradient(img, selection_element))
+        in_focus = np.where(sharp == np.max(sharp))[0][0]
+
+        if mode == 'max':
+            img = np.max(dat[in_focus-int((num_slices-1)/2):in_focus+int((num_slices-1)/2)+1], axis=0)
+            print(dat[in_focus-int((num_slices-1)/2):in_focus+int((num_slices-1)/2)+1].shape)
+        elif mode == 'mean':
+            img = np.mean(dat[in_focus-int((num_slices-1)/2):in_focus+int((num_slices-1)/2)+1], axis=0)
+        else:
+            logging.warning("Mode input not recognized, maximum intensity projection is used.")
+            img = np.max(dat[in_focus - int((num_slices - 1) / 2):in_focus + int((num_slices - 1) / 2) + 1], axis=0)
+    else:
+        print("#z-slices: 1")
+        img = np.array(data[which_channel], dtype=int)
+        del data
+
+        histo, bins = np.histogram(img, bins=2000)
+        histo = np.cumsum(histo)
+        histo = histo / histo[-1] * 100
+        plc = np.min(np.where(histo > outlier_cutoff))
+        thr_out = bins[plc] / 2 + bins[plc + 1] / 2
+        # ax.plot(bins[1:] - (bins[2] - bins[1]) / 2, histo)
+        # ax.set_title("Normalized cumulative histogram of #{}".format(e))
+        # ax.set_ylabel("#pixels (%)")
+        # ax.set_xlabel("Intensity value ()")
+        # print("outlier threshold is at {}".format(thr_out))
+        # print("max outlier value is {}".format(bins[-1]))
+        img[img > thr_out] = thr_out
+
+    return np.array(img, dtype=int)
 
 
 def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, outlier_cutoff=99, mode='max'):

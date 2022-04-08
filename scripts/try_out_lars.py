@@ -65,7 +65,7 @@ blur = 25
 max_slices = 30
 cropping = True  # if true, the last images will be cropped to only the mask
 
-for nnn in np.arange(2, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+for nnn in np.arange(14, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
     print("dataset nr. {}".format(nnn + 1))
     print(data_paths_before[nnn])
 
@@ -74,15 +74,17 @@ for nnn in np.arange(2, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
     data_before_milling = tiff.read_data(data_paths_before[nnn])
     meta_before = data_before_milling[channel_before[nnn]].metadata
 
-    img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices, channel_before[nnn],
-                                                 mode='max')
+    img_before = find_focus_z_slice_and_outlier_cutoff(data_before_milling)
+    # img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices, channel_before[nnn],
+    #                                              mode='max')
     del data_before_milling
 
     # for data after milling
     data_after_milling = tiff.read_data(data_paths_after[nnn])
     meta_after = data_after_milling[channel_after[nnn]].metadata
 
-    img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices, channel_after[nnn], mode='max')
+    img_after = find_focus_z_slice_and_outlier_cutoff(data_after_milling)
+    # img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices, channel_after[nnn], mode='max')
     del data_after_milling
 
     print("Pixel sizes are the same: {}".format(meta_before["Pixel size"][0] == meta_after["Pixel size"][0]))
@@ -129,7 +131,7 @@ for nnn in np.arange(2, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
     # calculating the difference between the two images and creating a mask
     mask = create_diff_mask(img_before_blurred, img_after_blurred, squaring=False)
 
-    mask2 = create_diff_mask(img_before_blurred, img_after_blurred, squaring=True)
+    mask2 = create_diff_mask(img_before_blurred, img_after_blurred, squaring=False)
     masked_img2, extents2 = create_masked_img(img_after, mask2, cropping)
 
     mask_combined, combined = combine_masks(mask, mask_lines, mask_lines_all)
@@ -141,11 +143,11 @@ for nnn in np.arange(2, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
 
     masked_img, extents = create_masked_img(img_after, mask_combined, cropping)
 
-    # fig3, ax3 = plt.subplots(ncols=4)
-    # ax3[0].imshow(mask)
-    # ax3[1].imshow(mask_lines)
-    # ax3[2].imshow(mask_combined)
-    # ax3[3].imshow((5.0*mask_lines + 5.0*mask_combined)*img_after_blurred)
+    fig3, ax3 = plt.subplots(ncols=4)
+    ax3[0].imshow(mask)
+    ax3[1].imshow(mask_lines)
+    ax3[2].imshow(mask_combined)
+    ax3[3].imshow((5.0*mask_lines + 5.0*mask_combined)*img_after_blurred)
 
     # setting a threshold for the image_after within the mask
     binary_end_1b, binary_end_result1 = create_binary_end_image(mask_combined, masked_img, threshold_end,
