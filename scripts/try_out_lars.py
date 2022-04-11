@@ -65,7 +65,7 @@ blur = 25
 max_slices = 30
 cropping = True  # if true, the last images will be cropped to only the mask
 
-for nnn in np.arange(14, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+for nnn in np.arange(0, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
     print("dataset nr. {}".format(nnn + 1))
     print(data_paths_before[nnn])
 
@@ -73,18 +73,35 @@ for nnn in np.arange(14, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
     # for data before milling
     data_before_milling = tiff.read_data(data_paths_before[nnn])
     meta_before = data_before_milling[channel_before[nnn]].metadata
-
-    img_before = find_focus_z_slice_and_outlier_cutoff(data_before_milling)
-    # img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices, channel_before[nnn],
-    #                                              mode='max')
-    del data_before_milling
-
-    # for data after milling
     data_after_milling = tiff.read_data(data_paths_after[nnn])
     meta_after = data_after_milling[channel_after[nnn]].metadata
 
-    img_after = find_focus_z_slice_and_outlier_cutoff(data_after_milling)
-    # img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices, channel_after[nnn], mode='max')
+    img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices, channel_before[nnn],
+                                                 mode='max')
+    img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices, channel_after[nnn], mode='max')
+
+    # rescaling one image to the other if necessary
+    img_before, img_after = rescaling(img_before, img_after)
+
+    # calculate the shift between the two images
+    img_after, shift = overlay(img_before, img_after, max_shift=4)  # max_shift between 1 and inf
+    # shift is [dy, dx]
+
+    # preprocessing steps of the images: blurring the image
+    img_before, img_after, img_before_blurred, img_after_blurred = blur_and_norm(img_before, img_after, blur=blur)
+
+    milling_x_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x')
+    milling_y_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='y')
+
+    img_before = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos, milling_x_pos,
+                                                       which_channel=channel_before[nnn])
+
+    # for data after milling
+
+    img_after = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos-shift[0],
+                                                      milling_x_pos-shift[1], which_channel=channel_after[nnn])
+
+    del data_before_milling
     del data_after_milling
 
     print("Pixel sizes are the same: {}".format(meta_before["Pixel size"][0] == meta_after["Pixel size"][0]))
@@ -93,7 +110,7 @@ for nnn in np.arange(14, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
     img_before, img_after = rescaling(img_before, img_after)
 
     # calculate the shift between the two images
-    img_after = overlay(img_before, img_after, max_shift=4)  # max_shift between 1 and inf
+    img_after, shift = overlay(img_before, img_after, max_shift=4)  # max_shift between 1 and inf
 
     # preprocessing steps of the images: blurring the image
     img_before, img_after, img_before_blurred, img_after_blurred = blur_and_norm(img_before, img_after, blur=blur)
@@ -110,9 +127,9 @@ for nnn in np.arange(14, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
     angle_lines = calculate_angles(lines)
     x_lines2, y_lines2, lines2, angle_lines2 = combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines,
                                                                             mid_milling_site,
-                                                                            img_after_blurred.shape)
+                                                                            img_after_blurred.shape, max_dist=1/30)
 
-    groups = group_single_lines(x_lines2, y_lines2, lines2, angle_lines2, max_distance=img_after.shape[1] / 35)
+    groups = group_single_lines(x_lines2, y_lines2, lines2, angle_lines2, max_distance=img_after.shape[1] / 30)
 
     after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2, mid_milling_site,
                                             max_dist=img_after.shape[1] / 5,
@@ -131,7 +148,7 @@ for nnn in np.arange(14, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
     # calculating the difference between the two images and creating a mask
     mask = create_diff_mask(img_before_blurred, img_after_blurred, squaring=False)
 
-    mask2 = create_diff_mask(img_before_blurred, img_after_blurred, squaring=False)
+    mask2 = create_diff_mask(img_before_blurred, img_after_blurred, squaring=True)
     masked_img2, extents2 = create_masked_img(img_after, mask2, cropping)
 
     mask_combined, combined = combine_masks(mask, mask_lines, mask_lines_all)
@@ -152,16 +169,17 @@ for nnn in np.arange(14, 18, 1, dtype=int):  # range(len(data_paths_after)) OR n
     # setting a threshold for the image_after within the mask
     binary_end_1b, binary_end_result1 = create_binary_end_image(mask_combined, masked_img, threshold_end,
                                                                 open_close=True)
-    binary_end_2b, binary_end_result2 = create_binary_end_image(mask2, masked_img2, threshold_end, open_close=True)
+    binary_end_2b, binary_end_result2 = create_binary_end_image(mask2, masked_img2, threshold_end, open_close=True,
+                                                                rid_of_back_signal=False)
 
-    fig, ax = plt.subplots(ncols=2)
-    ax[0].imshow(binary_end_result1)
-    ax[1].imshow(binary_end_1b)
-    plt.show()
-    print("binary image made")
+    # fig, ax = plt.subplots(ncols=2)
+    # ax[0].imshow(binary_end_result1)
+    # ax[1].imshow(binary_end_1b)
+    # plt.show()
+    # print("binary image made")
 
     # here I start with trying to detect circles
-    key_points, yxr = detect_blobs(binary_end_result1, min_circ=0.6, min_area=7**2/2, plotting=True)
+    # key_points, yxr = detect_blobs(binary_end_result1, min_circ=0.6, min_area=7**2/2, plotting=False)
     #
     # print("circle detection complete")
 

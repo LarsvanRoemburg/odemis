@@ -13,9 +13,8 @@ from copy import deepcopy
 import cv2
 
 
-def find_focus_z_slice_and_outlier_cutoff(data, num_slices=5, disk_size=5, which_channel=0, outlier_cutoff=99,
-                                          mode='max'):
-
+def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, square_width=1 / 5, num_slices=5,
+                                          disk_size=5, which_channel=0, outlier_cutoff=99, mode='max'):
     if data[0].shape[0] == 1:
         num_z = len(data[which_channel][0][0])
         print("#z-slices: {}".format(num_z))
@@ -28,24 +27,57 @@ def find_focus_z_slice_and_outlier_cutoff(data, num_slices=5, disk_size=5, which
         plc = np.min(np.where(histo > outlier_cutoff))
         thr_out = bins[plc] / 2 + bins[plc + 1] / 2
         print("outlier threshold is at {}".format(thr_out))
+        dat[dat > thr_out] = thr_out
+
+        minmax = np.zeros(4, dtype=int)  # y_min, y_max, x_min, x_max
+        minmax[0] = int(milling_pos_y - dat[0].shape[0] * square_width / 2)
+        minmax[1] = int(milling_pos_y + dat[0].shape[0] * square_width / 2)
+        minmax[2] = int(milling_pos_x - dat[0].shape[1] * square_width / 2)
+        minmax[3] = int(milling_pos_x + dat[0].shape[1] * square_width / 2)
+
+        for w in range(2):
+            # x values
+            if minmax[w] < 0:
+                minmax[w] = 0
+            elif minmax[w] > dat[0].shape[0]:
+                minmax[w] = dat[0].shape[0]
+
+            if minmax[w+2] < 0:
+                minmax[w+2] = 0
+            elif minmax[w+2] > dat[0].shape[1]:
+                minmax[w+2] = dat[0].shape[1]
+
         for i in range(dat.shape[0]):
             print(i)
-            dat[i][dat[i] > thr_out] = thr_out
-            img = dat[i]
+            # dat[i][dat[i] > thr_out] = thr_out
+            img = dat[i][minmax[0]:minmax[1], minmax[2]:minmax[3]]  # [1000:1600, 1000:1600]
             # img[img > thr_out] = thr_out
-            img = gaussian_filter(img, sigma=5)
+            img = gaussian_filter(img, sigma=10)  # 20
             img = np.array(img / np.max(img) * 255, dtype=np.uint8)
             sharp[i] = np.mean(gradient(img, selection_element))
+            # if i >= num_slices:
+            #     if 1.01*sharp[i] < np.mean(sharp[i-num_slices:i]):
+            #         break
         in_focus = np.where(sharp == np.max(sharp))[0][0]
 
+        minmax = np.zeros(2, dtype=int)  # y_min, y_max, x_min, x_max
+        minmax[0] = in_focus - int((num_slices-1)/2)
+        minmax[1] = in_focus + int((num_slices-1)/2) + 1
+
+        if minmax[0] < 0:
+            minmax[0] = 0
+        if minmax[1] > dat.shape[0]:
+            minmax[1] = dat.shape[0]
+
+        print(f"In focus slice is: {in_focus}.")
         if mode == 'max':
-            img = np.max(dat[in_focus-int((num_slices-1)/2):in_focus+int((num_slices-1)/2)+1], axis=0)
-            print(dat[in_focus-int((num_slices-1)/2):in_focus+int((num_slices-1)/2)+1].shape)
+            img = np.max(dat[minmax[0]:minmax[1]], axis=0)
+            print(dat[minmax[0]:minmax[1]].shape)
         elif mode == 'mean':
-            img = np.mean(dat[in_focus-int((num_slices-1)/2):in_focus+int((num_slices-1)/2)+1], axis=0)
+            img = np.mean(dat[minmax[0]:minmax[1]], axis=0)
         else:
             logging.warning("Mode input not recognized, maximum intensity projection is used.")
-            img = np.max(dat[in_focus - int((num_slices - 1) / 2):in_focus + int((num_slices - 1) / 2) + 1], axis=0)
+            img = np.max(dat[minmax[0]:minmax[1]], axis=0)
     else:
         print("#z-slices: 1")
         img = np.array(data[which_channel], dtype=int)
@@ -68,7 +100,6 @@ def find_focus_z_slice_and_outlier_cutoff(data, num_slices=5, disk_size=5, which
 
 
 def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, outlier_cutoff=99, mode='max'):
-
     """
     Converts the Odemis data into an image for further use in the automatic ROI detection.
     z-stacks get projected into a single image with a maximum number of slices used.
@@ -141,7 +172,6 @@ def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, outlier_c
 
 
 def rescaling(img_before, img_after):
-
     """
     To rescale a smaller image (k x l) to a bigger image (m x n).
     The dimension of the smaller image goes from (k x l) to (m x n).
@@ -160,6 +190,7 @@ def rescaling(img_before, img_after):
         return img_before, img_after
 
     if img_after.shape > img_before.shape:
+        print("image shapes are not equal.")
         img_rescaled = np.zeros(img_after.shape)
         d_pix = img_before.shape[0] / img_after.shape[0]  # here we assume that the difference in x is the same
         # as in y as pixels are squares
@@ -202,7 +233,6 @@ def rescaling(img_before, img_after):
 
 
 def overlay(img_before, img_after, max_shift=5):
-
     """
     Shift the img_after in x and y position to have the best overlay with img_before.
     This is done with finding the maximum in a convolution.
@@ -261,11 +291,10 @@ def overlay(img_before, img_after, max_shift=5):
         img_after[:dy_pix, :] = img_after[-dy_pix:, :]
         img_after[dy_pix:, :] = np.max(img_after)
 
-    return img_after
+    return img_after, shift
 
 
 def blur_and_norm(img_before, img_after, blur=25):
-
     """
     Because the images before and after milling have different intensity profiles and do not have the exact same noise,
     normalization and blurring is required for being able to compare the two images. Here the two images are first
@@ -307,7 +336,6 @@ def blur_and_norm(img_before, img_after, blur=25):
 
 def create_diff_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, open_iter=12, ero_iter=0,
                      squaring=False):
-
     """
     Here a mask is created with looking at the difference in intensities between the blurred images before and after
     milling. A threshold is set for the difference and a binary opening is performed to get rid of too small
@@ -368,7 +396,14 @@ def find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x'):
         projection_after = np.sum(img_after_blurred, axis=0)
     elif ax == 'y':
         projection_before = np.sum(img_before_blurred, axis=1)
+        minimal = np.min(projection_before)
+        projection_before[:int(img_before_blurred.shape[0]/6)] = minimal
+        projection_before[-int(img_before_blurred.shape[0] / 6):] = minimal
+
         projection_after = np.sum(img_after_blurred, axis=1)
+        # minimal = np.min(projection_after)
+        # projection_after[:int(img_after_blurred.shape[0] / 6), :] = minimal
+        # projection_after[-int(img_after_blurred.shape[0] / 6):, :] = minimal
     else:
         raise NameError("ax does not have the correct input")
     diff_proj = projection_before - projection_after
@@ -669,18 +704,18 @@ def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, x_pos_mil, min
                                + np.mean(angle_lines[groups[biggest[1][m]]]) * len(groups[biggest[1][m]])) / \
                               (len(groups[biggest[0][m]]) + len(groups[biggest[1][m]]))
                     x_k = (np.mean(x_lines[groups[biggest[0][k]]]) * len(groups[biggest[0][k]])
-                           + np.mean(x_lines[groups[biggest[1][k]]])*len(groups[biggest[1][k]])) / \
-                          (len(groups[biggest[0][k]])+len(groups[biggest[1][k]]))
+                           + np.mean(x_lines[groups[biggest[1][k]]]) * len(groups[biggest[1][k]])) / \
+                          (len(groups[biggest[0][k]]) + len(groups[biggest[1][k]]))
                     y_k = (np.mean(y_lines[groups[biggest[0][k]]]) * len(groups[biggest[0][k]])
                            + np.mean(y_lines[groups[biggest[1][k]]]) * len(groups[biggest[1][k]])) / \
                           (len(groups[biggest[0][k]]) + len(groups[biggest[1][k]]))
                     x_m = (np.mean(x_lines[groups[biggest[0][m]]]) * len(groups[biggest[0][m]])
-                           + np.mean(x_lines[groups[biggest[1][m]]])*len(groups[biggest[1][m]])) / \
-                          (len(groups[biggest[0][m]])+len(groups[biggest[1][m]]))
+                           + np.mean(x_lines[groups[biggest[1][m]]]) * len(groups[biggest[1][m]])) / \
+                          (len(groups[biggest[0][m]]) + len(groups[biggest[1][m]]))
                     y_m = (np.mean(y_lines[groups[biggest[0][m]]]) * len(groups[biggest[0][m]])
                            + np.mean(y_lines[groups[biggest[1][m]]]) * len(groups[biggest[1][m]])) / \
                           (len(groups[biggest[0][m]]) + len(groups[biggest[1][m]]))
-                    distance = np.sqrt((x_k-x_m)**2 + (y_k-y_m)**2)
+                    distance = np.sqrt((x_k - x_m) ** 2 + (y_k - y_m) ** 2)
 
                     if (np.abs(angle_k - angle_m) <= max_angle_diff) & (distance <= min_dist):
                         merge_big_groups[k, m] = True
@@ -720,10 +755,10 @@ def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, x_pos_mil, min
                 r = 0
                 d = np.inf
                 for i in range(len(biggest[0])):
-                    x_mean = (np.mean(x_lines[groups[biggest[0][i]]]) + np.mean(x_lines[groups[biggest[1][i]]]))/2
-                    if np.abs(x_mean-x_pos_mil) < d:
+                    x_mean = (np.mean(x_lines[groups[biggest[0][i]]]) + np.mean(x_lines[groups[biggest[1][i]]])) / 2
+                    if np.abs(x_mean - x_pos_mil) < d:
                         r = i
-                        d = np.abs(x_mean-x_pos_mil)
+                        d = np.abs(x_mean - x_pos_mil)
 
                 for i in groups[biggest[0][r]]:
                     after_grouping.append(i)
@@ -807,8 +842,7 @@ def show_line_detection_steps(img_after, img_after_blurred, edges, lines, lines2
 
 
 def create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_shape, inv_max_dist=20,
-                     max_angle=np.pi/8, all_groups=False):
-
+                     max_angle=np.pi / 8, all_groups=False):
     """
     Here a mask is created with the lines found in the line detection. The lines after grouping, are split into two
     groups (left and right) and an average position and angle of both groups is used for creating the boundaries
@@ -869,8 +903,8 @@ def create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, i
 
         mask_lines = np.zeros(img_shape, dtype=bool)
         for y in y_grid:
-            x_line_left = (y-y_left_mean) / np.tan(angle_left_mean) + x_left_mean
-            x_line_right = (y-y_right_mean) / np.tan(angle_right_mean) + x_right_mean
+            x_line_left = (y - y_left_mean) / np.tan(angle_left_mean) + x_left_mean
+            x_line_right = (y - y_right_mean) / np.tan(angle_right_mean) + x_right_mean
             x_line_left = np.ones(mask_lines.shape[1]) * x_line_left
             x_line_right = np.ones(mask_lines.shape[1]) * x_line_right
             if x_line_left[0] < x_line_right[0]:
@@ -887,7 +921,6 @@ def create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, i
 
 def combine_masks(mask_diff, mask_lines, mask_lines_all, thres_diff=70, thres_lines=5, y_cut_off=6, it=75,
                   squaring=True):
-
     """
     Here we look if the mask from the difference in intensity and the mask from the line detection can be combined.
     The overlap between the masks is used as a measure to see if they can be combined or not.
@@ -945,8 +978,8 @@ def combine_masks(mask_diff, mask_lines, mask_lines_all, thres_diff=70, thres_li
     # print("The overlap with mask lines is {}%.".format(overlap_lines))
     # print("The line mask will be used : {}".format((overlap_diff > thres_diff) | (overlap_lines > thres_lines)))
     if (overlap_diff > thres_diff) | (overlap_lines > thres_lines):
-        mask_combined[:int(mask_combined.shape[0]/y_cut_off), :] = False
-        mask_combined[-int(mask_combined.shape[0]/y_cut_off):, :] = False
+        mask_combined[:int(mask_combined.shape[0] / y_cut_off), :] = False
+        mask_combined[-int(mask_combined.shape[0] / y_cut_off):, :] = False
 
         # squaring the mask
         index_mask = np.where(mask_combined)
@@ -966,7 +999,7 @@ def combine_masks(mask_diff, mask_lines, mask_lines_all, thres_diff=70, thres_li
                                        iterations=10)
         return mask_combined, True
     else:
-        mask_diff[:int(mask_diff.shape[0]/y_cut_off), :] = False
+        mask_diff[:int(mask_diff.shape[0] / y_cut_off), :] = False
         mask_diff[-int(mask_diff.shape[0] / y_cut_off):, :] = False
         index_mask = np.where(mask_diff)
 
@@ -977,7 +1010,7 @@ def combine_masks(mask_diff, mask_lines, mask_lines_all, thres_diff=70, thres_li
             x_max = np.max(index_mask[1])
             y_max = np.max(index_mask[0])
             # if the mask is too big, then there are maybe multiple milling sites so squaring will not be useful
-            if x_max-x_min <= mask_diff.shape[1]/3:
+            if x_max - x_min <= mask_diff.shape[1] / 3:
                 mask_diff[y_min:y_max, x_min:x_max] = True
         else:
             mask_diff = binary_dilation(mask_diff, iterations=10)
@@ -986,7 +1019,6 @@ def combine_masks(mask_diff, mask_lines, mask_lines_all, thres_diff=70, thres_li
 
 
 def create_masked_img(img_after, mask, cropping=False):
-
     """
     Multiplies the mask with the image after milling, so you only see the signal within the mask.
     If cropping set to True and there is a mask, the outputted image is cropped to show only the mask.
@@ -1025,7 +1057,6 @@ def create_masked_img(img_after, mask, cropping=False):
 
 
 def create_binary_end_image(mask, masked_img, threshold=0.25, open_close=True, rid_of_back_signal=True):
-
     """
     To apply a threshold on the image signal within the mask.
     After the threshold, some binary closing, opening and again closing is performed (optional but recommended).
@@ -1056,10 +1087,10 @@ def create_binary_end_image(mask, masked_img, threshold=0.25, open_close=True, r
             x_max = np.max(index_mask[1])
             y_max = np.max(index_mask[0])
             mask = mask[y_min:y_max, x_min:x_max]
-        bound = binary_end_result*(1.0*mask-1.0*binary_erosion(mask, iterations=10))
+        bound = binary_end_result * (1.0 * mask - 1.0 * binary_erosion(mask, iterations=10))
 
-        minus = binary_dilation(bound, mask=binary_end_result, iterations=0)*binary_end_result
-        binary_end_result_without = 1.0*binary_end_result - 1.0*minus
+        minus = binary_dilation(bound, mask=binary_end_result, iterations=0) * binary_end_result
+        binary_end_result_without = 1.0 * binary_end_result - 1.0 * minus
         binary_end_result_without = np.array(binary_end_result_without, dtype=bool)
     else:
         binary_end_result_without = binary_end_result
@@ -1069,7 +1100,6 @@ def create_binary_end_image(mask, masked_img, threshold=0.25, open_close=True, r
 
 def detect_blobs(binary_end_result2, min_circ=0, max_circ=1, min_area=0, max_area=np.inf, min_in=0, max_in=1,
                  plotting=False):
-
     """
     Here blob detection from opencv is performed on a binary image (or an image with intensities ranging from 0 to 1).
     You can set the constraints of the blob detection with the parameters of this function.
@@ -1152,7 +1182,6 @@ def detect_blobs(binary_end_result2, min_circ=0, max_circ=1, min_area=0, max_are
 
 def plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img, masked_img2,
                      binary_end_result1, binary_end_result2, cropping, extents, extents2):
-
     """
     This functions shows 6 images on different processing steps in this script. It shows the input used in the very
     beginning, where the mask is found, and what the binary signal is within the mask.
