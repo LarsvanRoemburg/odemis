@@ -10,11 +10,12 @@ from skimage.feature import canny
 from skimage.morphology import disk
 from skimage.filters.rank import gradient
 from copy import deepcopy
+from odemis.dataio import tiff
 import cv2
 
 
-def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, square_width=1 / 5, num_slices=5,
-                                          disk_size=5, which_channel=0, outlier_cutoff=99, mode='max'):
+def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, which_channel=0, blur=20,
+                                          square_width=1 / 5, num_slices=5, disk_size=5, outlier_cutoff=99, mode='max'):
     if data[0].shape[0] == 1:
         num_z = len(data[which_channel][0][0])
         print("#z-slices: {}".format(num_z))
@@ -48,11 +49,11 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, sq
                 minmax[w+2] = dat[0].shape[1]
 
         for i in range(dat.shape[0]):
-            print(i)
+            # print(i)
             # dat[i][dat[i] > thr_out] = thr_out
             img = dat[i][minmax[0]:minmax[1], minmax[2]:minmax[3]]  # [1000:1600, 1000:1600]
             # img[img > thr_out] = thr_out
-            img = gaussian_filter(img, sigma=10)  # 20
+            img = gaussian_filter(img, sigma=blur)  # 20
             img = np.array(img / np.max(img) * 255, dtype=np.uint8)
             sharp[i] = np.mean(gradient(img, selection_element))
             # if i >= num_slices:
@@ -186,8 +187,8 @@ def rescaling(img_before, img_after):
         img_after (ndarray):    If it was the smaller image, the rescaled image, otherwise the same as the input image.
     """
 
-    if img_after.shape == img_before.shape:
-        return img_before, img_after
+    if img_before.shape == img_after.shape:
+        return img_before, img_after, 1
 
     if img_after.shape > img_before.shape:
         print("image shapes are not equal.")
@@ -208,7 +209,7 @@ def rescaling(img_before, img_after):
             x_new = np.interp(y_new, y_vals, x_vals)
             img_rescaled[:, i] = x_new
         # img_before = img_rescaled
-        return img_rescaled, img_after
+        return img_rescaled, img_after, img_before.shape[0]/img_after.shape[0]
 
     # not necessary anymore to have it copied! change it later.
     else:  # copied the code but then for the images swapped, this is better memory wise (I think):
@@ -229,7 +230,7 @@ def rescaling(img_before, img_after):
             x_new = np.interp(y_new, y_vals, x_vals)
             img_rescaled[:, i] = x_new
         # img_after = img_rescaled
-        return img_before, img_rescaled
+        return img_before, img_rescaled, img_before.shape[0]/img_after.shape[0]
 
 
 def overlay(img_before, img_after, max_shift=5):
@@ -292,6 +293,66 @@ def overlay(img_before, img_after, max_shift=5):
         img_after[dy_pix:, :] = np.max(img_after)
 
     return img_after, shift
+
+
+def get_image(data_paths_before, data_paths_after, channel_before, channel_after, max_slices=30, mode='in_focus',
+              proj_mode='max', blur=25):
+    if mode == 'in_focus':
+        data_before_milling = tiff.read_data(data_paths_before)
+        meta_before = data_before_milling[channel_before].metadata
+        data_after_milling = tiff.read_data(data_paths_after)
+        meta_after = data_after_milling[channel_after].metadata
+        if data_before_milling[0].shape[0] != 1 and data_after_milling[0].shape[0] != 1:
+            img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices, channel_before,
+                                                         mode=proj_mode)
+            img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices, channel_after, mode=proj_mode)
+            return img_before, img_after, meta_before, meta_after
+
+        img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices, channel_before,
+                                                     mode=proj_mode)
+        img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices, channel_after, mode=proj_mode)
+
+        # rescaling one image to the other if necessary
+        img_before, img_after, magni = rescaling(img_before, img_after)
+        print(f"scaling factor is: {magni}")
+        # calculate the shift between the two images
+        img_after, shift = overlay(img_before, img_after, max_shift=4)  # max_shift between 1 and inf
+        # shift is [dy, dx]
+
+        # preprocessing steps of the images: blurring the image
+        img_before, img_after, img_before_blurred, img_after_blurred = blur_and_norm(img_before, img_after, blur=blur)
+
+        milling_x_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x')
+        milling_y_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='y')
+
+        if magni == 1:
+            img_before = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos, milling_x_pos,
+                                                               channel_before, blur)
+            img_after = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos - shift[0],
+                                                              milling_x_pos - shift[1], channel_after, blur)
+        elif magni > 1:
+            img_before = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos, milling_x_pos,
+                                                               channel_before, blur)
+            img_after = find_focus_z_slice_and_outlier_cutoff(data_after_milling, (milling_y_pos - shift[0]) / magni,
+                                                              (milling_x_pos - shift[1]) / magni, channel_after, blur)
+        elif magni < 1:
+            img_before = find_focus_z_slice_and_outlier_cutoff(data_before_milling, (milling_y_pos - shift[0]) * magni,
+                                                               (milling_x_pos - shift[1]) * magni, channel_before, blur)
+            img_after = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos, milling_x_pos,
+                                                              channel_after, blur)
+    elif mode == 'projection':
+        data_before_milling = tiff.read_data(data_paths_before)
+        meta_before = data_before_milling[channel_before].metadata
+        data_after_milling = tiff.read_data(data_paths_after)
+        meta_after = data_after_milling[channel_after].metadata
+
+        img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices, channel_before,
+                                                     mode=proj_mode)
+        img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices, channel_after, mode=proj_mode)
+
+    else:
+        raise NameError("Input for mode not recognized. It can be 'projection' or 'in_focus'.")
+    return img_before, img_after, meta_before, meta_after
 
 
 def blur_and_norm(img_before, img_after, blur=25):

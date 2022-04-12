@@ -1,5 +1,4 @@
 from functions_lars import *
-from odemis.dataio import tiff
 import gc
 
 data_paths_before = ["/home/victoria/Documents/Lars/data/1/FOV2_GFP_cp00.tif",
@@ -65,49 +64,20 @@ blur = 25
 max_slices = 30
 cropping = True  # if true, the last images will be cropped to only the mask
 
-for nnn in np.arange(0, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+for nnn in np.arange(5, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
     print("dataset nr. {}".format(nnn + 1))
     print(data_paths_before[nnn])
 
     # convert the image to a numpy array and set a threshold for outliers in the image / z-stack
     # for data before milling
-    data_before_milling = tiff.read_data(data_paths_before[nnn])
-    meta_before = data_before_milling[channel_before[nnn]].metadata
-    data_after_milling = tiff.read_data(data_paths_after[nnn])
-    meta_after = data_after_milling[channel_after[nnn]].metadata
-
-    img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices, channel_before[nnn],
-                                                 mode='max')
-    img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices, channel_after[nnn], mode='max')
-
-    # rescaling one image to the other if necessary
-    img_before, img_after = rescaling(img_before, img_after)
-
-    # calculate the shift between the two images
-    img_after, shift = overlay(img_before, img_after, max_shift=4)  # max_shift between 1 and inf
-    # shift is [dy, dx]
-
-    # preprocessing steps of the images: blurring the image
-    img_before, img_after, img_before_blurred, img_after_blurred = blur_and_norm(img_before, img_after, blur=blur)
-
-    milling_x_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x')
-    milling_y_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='y')
-
-    img_before = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos, milling_x_pos,
-                                                       which_channel=channel_before[nnn])
-
-    # for data after milling
-
-    img_after = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos-shift[0],
-                                                      milling_x_pos-shift[1], which_channel=channel_after[nnn])
-
-    del data_before_milling
-    del data_after_milling
+    img_before, img_after, meta_before, meta_after = get_image(data_paths_before[nnn], data_paths_after[nnn],
+                                                               channel_before[nnn], channel_after[nnn],
+                                                               mode='projection', proj_mode='max')
 
     print("Pixel sizes are the same: {}".format(meta_before["Pixel size"][0] == meta_after["Pixel size"][0]))
 
     # rescaling one image to the other if necessary
-    img_before, img_after = rescaling(img_before, img_after)
+    img_before, img_after, magni = rescaling(img_before, img_after)
 
     # calculate the shift between the two images
     img_after, shift = overlay(img_before, img_after, max_shift=4)  # max_shift between 1 and inf
@@ -151,7 +121,7 @@ for nnn in np.arange(0, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
     mask2 = create_diff_mask(img_before_blurred, img_after_blurred, squaring=True)
     masked_img2, extents2 = create_masked_img(img_after, mask2, cropping)
 
-    mask_combined, combined = combine_masks(mask, mask_lines, mask_lines_all)
+    mask_combined, combined = combine_masks(mask, mask_lines, mask_lines_all, squaring=False)
     print("masks are combined = {}".format(combined))
     # if not combined:
     #     mask_lines = create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_after.shape,
@@ -162,9 +132,13 @@ for nnn in np.arange(0, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
 
     fig3, ax3 = plt.subplots(ncols=4)
     ax3[0].imshow(mask)
+    ax3[0].set_title("Difference mask")
     ax3[1].imshow(mask_lines)
-    ax3[2].imshow(mask_combined)
-    ax3[3].imshow((5.0*mask_lines + 5.0*mask_combined)*img_after_blurred)
+    ax3[1].set_title("Line mask")
+    ax3[2].imshow((5.0*mask_lines + 5.0*mask))
+    ax3[2].set_title("Overlap")
+    ax3[3].imshow(mask_combined)
+    ax3[3].set_title("Masks combined")
 
     # setting a threshold for the image_after within the mask
     binary_end_1b, binary_end_result1 = create_binary_end_image(mask_combined, masked_img, threshold_end,
