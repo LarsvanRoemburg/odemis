@@ -64,7 +64,7 @@ blur = 25
 max_slices = 30
 cropping = True  # if true, the last images will be cropped to only the mask
 
-for nnn in np.arange(5, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+for nnn in np.arange(4, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
     print("dataset nr. {}".format(nnn + 1))
     print(data_paths_before[nnn])
 
@@ -122,11 +122,6 @@ for nnn in np.arange(5, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
     masked_img2, extents2 = create_masked_img(img_after, mask2, cropping)
 
     mask_combined, combined = combine_masks(mask, mask_lines, mask_lines_all, squaring=False)
-    print("masks are combined = {}".format(combined))
-    # if not combined:
-    #     mask_lines = create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_after.shape,
-    #                                   all_groups=True)
-    #     mask_combined, combined = combine_masks(mask, mask_lines)
 
     masked_img, extents = create_masked_img(img_after, mask_combined, cropping)
 
@@ -153,9 +148,9 @@ for nnn in np.arange(5, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
     # print("binary image made")
 
     # here I start with trying to detect circles
-    # key_points, yxr = detect_blobs(binary_end_result1, min_circ=0.6, min_area=7**2/2, plotting=False)
-    #
-    # print("circle detection complete")
+    key_points, yxr = detect_blobs(binary_end_result2, min_circ=0.6, min_area=7**2/2, plotting=True)
+
+    print("circle detection complete")
 
     plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img,
                      masked_img2, binary_end_result1, binary_end_result2, cropping, extents, extents2)

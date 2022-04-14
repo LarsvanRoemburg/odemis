@@ -136,7 +136,7 @@ def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, outlier_c
         plc = np.min(np.where(histo > outlier_cutoff))
         thr_out = bins[plc] / 2 + bins[plc + 1] / 2
         # ax.plot(bins[1:]-(bins[2]-bins[1])/2, histo)
-        # ax.set_title("Normalized cumulative histogram of #{}".format(e))
+        # ax.set_title("Normalized cumulative histogram before cutoff")
         # ax.set_ylabel("#pixels (%)")
         # ax.set_xlabel("Intensity value ()")
         print("outlier threshold is at {}".format(thr_out))
@@ -162,7 +162,7 @@ def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, outlier_c
         plc = np.min(np.where(histo > outlier_cutoff))
         thr_out = bins[plc] / 2 + bins[plc + 1] / 2
         # ax.plot(bins[1:] - (bins[2] - bins[1]) / 2, histo)
-        # ax.set_title("Normalized cumulative histogram of #{}".format(e))
+        # ax.set_title("Normalized cumulative histogram before cutoff")
         # ax.set_ylabel("#pixels (%)")
         # ax.set_xlabel("Intensity value ()")
         # print("outlier threshold is at {}".format(thr_out))
@@ -295,7 +295,7 @@ def overlay(img_before, img_after, max_shift=5):
     return img_after, shift
 
 
-def get_image(data_paths_before, data_paths_after, channel_before, channel_after, max_slices=30, mode='in_focus',
+def get_image(data_paths_before, data_paths_after, channel_before, channel_after, max_slices=30, mode='projection',
               proj_mode='max', blur=25):
     if mode == 'in_focus':
         data_before_milling = tiff.read_data(data_paths_before)
@@ -343,12 +343,15 @@ def get_image(data_paths_before, data_paths_after, channel_before, channel_after
     elif mode == 'projection':
         data_before_milling = tiff.read_data(data_paths_before)
         meta_before = data_before_milling[channel_before].metadata
-        data_after_milling = tiff.read_data(data_paths_after)
-        meta_after = data_after_milling[channel_after].metadata
-
         img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices, channel_before,
                                                      mode=proj_mode)
+        del data_before_milling
+
+        data_after_milling = tiff.read_data(data_paths_after)
+        meta_after = data_after_milling[channel_after].metadata
         img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices, channel_after, mode=proj_mode)
+
+        del data_after_milling
 
     else:
         raise NameError("Input for mode not recognized. It can be 'projection' or 'in_focus'.")
@@ -432,8 +435,8 @@ def create_diff_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, 
         y_min = np.min(index_mask[0])
         x_max = np.max(index_mask[1])
         y_max = np.max(index_mask[0])
-        # if x_max - x_min < mask.shape[1]/3:
-        mask[y_min:y_max, x_min:x_max] = True
+        if x_max - x_min < mask.shape[1]/3:
+            mask[y_min:y_max, x_min:x_max] = True
 
     return mask
 
@@ -1159,8 +1162,8 @@ def create_binary_end_image(mask, masked_img, threshold=0.25, open_close=True, r
     return binary_end_result, binary_end_result_without
 
 
-def detect_blobs(binary_end_result2, min_circ=0, max_circ=1, min_area=0, max_area=np.inf, min_in=0, max_in=1,
-                 plotting=False):
+def detect_blobs(binary_end_result, min_circ=0, max_circ=1, min_area=0, max_area=np.inf, min_in=0, max_in=1,
+                 min_con=0, max_con=1, plotting=False):
     """
     Here blob detection from opencv is performed on a binary image (or an image with intensities ranging from 0 to 1).
     You can set the constraints of the blob detection with the parameters of this function.
@@ -1169,13 +1172,15 @@ def detect_blobs(binary_end_result2, min_circ=0, max_circ=1, min_area=0, max_are
     https://learnopencv.com/blob-detection-using-opencv-python-c/
 
     Parameters:
-        binary_end_result2 (ndarray):   The image on which blob detection should be performed.
+        binary_end_result (ndarray):   The image on which blob detection should be performed.
         min_circ (float):               The minimal circularity the blob needs to have to be detected (range:[0,1])
         max_circ (float):               The maximal circularity the blob needs to have to be detected (range:[0,1])
         min_area (float):               The minimal area in pixels the blob needs to have to be detected (range:[0,inf])
         max_area (float):               The maximal area in pixels the blob needs to have to be detected (range:[0,inf])
         min_in (float):                 The minimal inertia the blob needs to have to be detected (range:[0,1])
         max_in (float):                 The maximal inertia the blob needs to have to be detected (range:[0,1])
+        min_con (float):                The minimal convexity the blob needs to have to be detected (range:[0,1])
+        max_con (float):                The maximal convexity the blob needs to have to be detected (range:[0,1])
         plotting (bool):                If set to True, the detected blobs are shown with red circles in the image.
 
     Returns:
@@ -1184,7 +1189,7 @@ def detect_blobs(binary_end_result2, min_circ=0, max_circ=1, min_area=0, max_are
 
     """
 
-    im = np.array(binary_end_result2 * 255,
+    im = np.array(binary_end_result * 255,
                   dtype=np.uint8)  # cv2.cvtColor(binary_end_result2.astype('uint8'), cv2.COLOR_BGR2GRAY)
     im = cv2.cvtColor(im, cv2.IMREAD_GRAYSCALE)
 
@@ -1213,6 +1218,13 @@ def detect_blobs(binary_end_result2, min_circ=0, max_circ=1, min_area=0, max_are
         params.minInertiaRatio = min_in
         params.maxInertiaRatio = max_in
 
+    if (min_con == 0) & (max_con == 1):
+        params.filterByConvexity = False
+    else:
+        params.filterByConvexity = True
+        params.minConvexity = min_con
+        params.maxConvexity = max_con
+
     ver = cv2.__version__.split('.')
     if int(ver[0]) < 3:
         detector = cv2.SimpleBlobDetector(params)
@@ -1234,6 +1246,12 @@ def detect_blobs(binary_end_result2, min_circ=0, max_circ=1, min_area=0, max_are
             circy, circx = circle_perimeter(center_y, center_x, radius,
                                             shape=im.shape)
             im[circy, circx] = (220, 20, 20, 255)
+            im[circy+1, circx] = (220, 20, 20, 255)
+            im[circy, circx+1] = (220, 20, 20, 255)
+            im[circy+1, circx+1] = (220, 20, 20, 255)
+            im[circy-1, circx] = (220, 20, 20, 255)
+            im[circy, circx-1] = (220, 20, 20, 255)
+            im[circy-1, circx-1] = (220, 20, 20, 255)
 
         ax.imshow(im)
         plt.show()
