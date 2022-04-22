@@ -15,7 +15,7 @@ import cv2
 
 
 def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, which_channel=0, blur=20,
-                                          square_width=1 / 5, num_slices=5, disk_size=5, outlier_cutoff=99, mode='max'):
+                                          square_width=1 / 4, num_slices=5, disk_size=5, outlier_cutoff=99, mode='max'):
     if data[0].shape[0] == 1:
         num_z = len(data[which_channel][0][0])
         print("#z-slices: {}".format(num_z))
@@ -36,6 +36,10 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
         minmax[2] = int(milling_pos_x - dat[0].shape[1] * square_width / 2)
         minmax[3] = int(milling_pos_x + dat[0].shape[1] * square_width / 2)
 
+        if milling_pos_y > dat[0].shape[0]*4/5 or milling_pos_y <= dat[0].shape[0]/5:
+            minmax[0] = dat[0].shape[0]/5
+            minmax[1] = dat[0].shape[0]*4/5
+
         for w in range(2):
             # x values
             if minmax[w] < 0:
@@ -47,19 +51,41 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
                 minmax[w+2] = 0
             elif minmax[w+2] > dat[0].shape[1]:
                 minmax[w+2] = dat[0].shape[1]
+        example_img = deepcopy(dat[0][minmax[0]:minmax[1], minmax[2]:minmax[3]])
+        high_freq_filter = np.zeros(example_img.shape)
+
+        for q in range(example_img.shape[0]):
+            for w in range(example_img.shape[1]):
+                high_freq_filter[q, w] = 1*((q-example_img.shape[0]/2)**2+(w-example_img.shape[1]/2)**2 >=
+                                            (example_img.shape[1]/4)**2)
 
         for i in range(dat.shape[0]):
             # print(i)
             # dat[i][dat[i] > thr_out] = thr_out
-            img = dat[i][minmax[0]:minmax[1], minmax[2]:minmax[3]]  # [1000:1600, 1000:1600]
+            img = deepcopy(dat[i][minmax[0]:minmax[1], minmax[2]:minmax[3]])  # [1000:1600, 1000:1600]
             # img[img > thr_out] = thr_out
-            img = gaussian_filter(img, sigma=blur)  # 20
-            img = np.array(img / np.max(img) * 255, dtype=np.uint8)
-            sharp[i] = np.mean(gradient(img, selection_element))
+            img = gaussian_filter(img, sigma=1)  # blur)  # 20
+            fft_img = np.log(np.abs(np.fft.fftshift(np.fft.fft2(np.fft.fftshift(img))))**2)
+            high_freq = fft_img*high_freq_filter
+            sharp[i] = np.sum(high_freq)
+            # img = np.array(img / np.max(img) * 255, dtype=np.uint8)
+            # sharp[i] = np.mean(gradient(img, selection_element))
             # if i >= num_slices:
             #     if 1.01*sharp[i] < np.mean(sharp[i-num_slices:i]):
             #         break
-        in_focus = np.where(sharp == np.max(sharp))[0][0]
+        fig, ax = plt.subplots()
+        ax.plot(sharp)
+        sharp = gaussian_filter(sharp, sigma=1)
+        ax.plot(sharp)
+        sharp *= (1-(2*np.arange(num_z)/num_z-1)**2+400)/400
+        ax.plot(sharp)
+        sharp_max = np.where(sharp == np.max(sharp))[0][0]
+        sharp_min = np.where(sharp == np.min(sharp))[0][0]
+        # which one is closer to the central slice
+        if np.abs(sharp_max-num_z/2) < np.abs(sharp_min-num_z/2):
+            in_focus = sharp_max
+        else:
+            in_focus = sharp_min
 
         minmax = np.zeros(2, dtype=int)  # y_min, y_max, x_min, x_max
         minmax[0] = in_focus - int((num_slices-1)/2)
@@ -1304,30 +1330,32 @@ def plot_end_results(img_before, img_after, img_before_blurred, img_after_blurre
     cv2.line(img_after_blurred, (x_min, y_max), (x_max, y_max), ints_after, 5)
     cv2.line(img_after_blurred, (x_min, y_min), (x_min, y_max), ints_after, 5)
 
-    fig, ax = plt.subplots(4, 2)  # , figsize=(15, 15))  # , sharey=True, sharex=True)  , dpi=600)
+    fig, ax = plt.subplots(2, 4)  # , figsize=(15, 15))  # , sharey=True, sharex=True)  , dpi=600)
 
     ax[0, 0].imshow(img_before)
     ax[0, 0].set_title("before")
-    ax[0, 1].imshow(img_after)
-    ax[0, 1].set_title("after")
-    ax[1, 0].imshow(img_before_blurred)
+    ax[1, 0].imshow(img_after)
+    ax[1, 0].set_title("after")
+    ax[0, 1].imshow(img_before_blurred)
     ax[1, 1].imshow(img_after_blurred)
+    ax[0, 1].set_title("Combi mask location")
+    ax[1, 1].set_title("Diff mask location")
     if cropping & (np.sum(mask) > 0):
-        ax[2, 0].imshow(masked_img, extent=extents)
-        ax[2, 1].imshow(masked_img2, extent=extents2)
-        ax[3, 0].imshow(binary_end_result1, extent=extents)
-        ax[3, 1].imshow(binary_end_result2, extent=extents2)
+        ax[0, 2].imshow(masked_img, extent=extents)
+        ax[1, 2].imshow(masked_img2, extent=extents2)
+        ax[0, 3].imshow(binary_end_result1, extent=extents)
+        ax[1, 3].imshow(binary_end_result2, extent=extents2)
     else:
-        ax[2, 0].imshow(masked_img)
-        ax[2, 1].imshow(masked_img2)
-        ax[3, 0].imshow(binary_end_result1)
-        ax[3, 1].imshow(binary_end_result2)
-    ax[2, 0].set_title("masked without opening")
-    ax[2, 1].set_title("masked with opening")
+        ax[0, 2].imshow(masked_img)
+        ax[1, 2].imshow(masked_img2)
+        ax[0, 3].imshow(binary_end_result1)
+        ax[1, 3].imshow(binary_end_result2)
+    ax[0, 2].set_title("image in combi mask")
+    ax[1, 2].set_title("image in diff mask")
 
-    ax[3, 0].set_title("end without 2nd opening")
+    ax[0, 3].set_title("end with combi mask")
 
-    ax[3, 1].set_title("end with 2nd opening")
+    ax[1, 3].set_title("end with diff mask")
 
     # plt.savefig("/home/victoria/Documents/Lars/figures/data nr{} max ip.png".format(e), dpi=300)  # , dpi=600)
     plt.show()
