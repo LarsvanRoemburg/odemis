@@ -36,9 +36,9 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
         minmax[2] = int(milling_pos_x - dat[0].shape[1] * square_width / 2)
         minmax[3] = int(milling_pos_x + dat[0].shape[1] * square_width / 2)
 
-        if milling_pos_y > dat[0].shape[0]*4/5 or milling_pos_y <= dat[0].shape[0]/5:
-            minmax[0] = dat[0].shape[0]/5
-            minmax[1] = dat[0].shape[0]*4/5
+        if milling_pos_y > dat[0].shape[0] * 4 / 5 or milling_pos_y <= dat[0].shape[0] / 5:
+            minmax[0] = dat[0].shape[0] / 5
+            minmax[1] = dat[0].shape[0] * 4 / 5
 
         for w in range(2):
             # x values
@@ -47,17 +47,20 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
             elif minmax[w] > dat[0].shape[0]:
                 minmax[w] = dat[0].shape[0]
 
-            if minmax[w+2] < 0:
-                minmax[w+2] = 0
-            elif minmax[w+2] > dat[0].shape[1]:
-                minmax[w+2] = dat[0].shape[1]
+            if minmax[w + 2] < 0:
+                minmax[w + 2] = 0
+            elif minmax[w + 2] > dat[0].shape[1]:
+                minmax[w + 2] = dat[0].shape[1]
         example_img = deepcopy(dat[0][minmax[0]:minmax[1], minmax[2]:minmax[3]])
         high_freq_filter = np.zeros(example_img.shape)
 
         for q in range(example_img.shape[0]):
             for w in range(example_img.shape[1]):
-                high_freq_filter[q, w] = 1*((q-example_img.shape[0]/2)**2+(w-example_img.shape[1]/2)**2 >=
-                                            (example_img.shape[1]/4)**2)
+                high_freq_filter[q, w] = 1 * (
+                            (q - example_img.shape[0] / 2) ** 2 + (w - example_img.shape[1] / 2) ** 2 >=
+                            (example_img.shape[1] / 4) ** 2) * ((q - example_img.shape[0] / 2) ** 2 +
+                                                                (w - example_img.shape[1] / 2) ** 2 <=
+                                                                (example_img.shape[1] / 2) ** 2)
 
         for i in range(dat.shape[0]):
             # print(i)
@@ -65,9 +68,9 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
             img = deepcopy(dat[i][minmax[0]:minmax[1], minmax[2]:minmax[3]])  # [1000:1600, 1000:1600]
             # img[img > thr_out] = thr_out
             img = gaussian_filter(img, sigma=1)  # blur)  # 20
-            fft_img = np.log(np.abs(np.fft.fftshift(np.fft.fft2(np.fft.fftshift(img))))**2)
-            high_freq = fft_img*high_freq_filter
-            sharp[i] = np.sum(high_freq)
+            fft_img = np.log(np.abs(np.fft.fftshift(np.fft.fft2(np.fft.fftshift(img)))) ** 2)
+            high_freq = fft_img * high_freq_filter
+            sharp[i] = np.mean(high_freq)
             # img = np.array(img / np.max(img) * 255, dtype=np.uint8)
             # sharp[i] = np.mean(gradient(img, selection_element))
             # if i >= num_slices:
@@ -77,19 +80,19 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
         ax.plot(sharp)
         sharp = gaussian_filter(sharp, sigma=1)
         ax.plot(sharp)
-        sharp *= (1-(2*np.arange(num_z)/num_z-1)**2+400)/400
+        sharp *= (1 - (2 * np.arange(num_z) / num_z - 1) ** 2 + 400) / 400
         ax.plot(sharp)
         sharp_max = np.where(sharp == np.max(sharp))[0][0]
         sharp_min = np.where(sharp == np.min(sharp))[0][0]
         # which one is closer to the central slice
-        if np.abs(sharp_max-num_z/2) < np.abs(sharp_min-num_z/2):
+        if np.abs(sharp_max - num_z / 2) < np.abs(sharp_min - num_z / 2):
             in_focus = sharp_max
         else:
             in_focus = sharp_min
 
         minmax = np.zeros(2, dtype=int)  # y_min, y_max, x_min, x_max
-        minmax[0] = in_focus - int((num_slices-1)/2)
-        minmax[1] = in_focus + int((num_slices-1)/2) + 1
+        minmax[0] = in_focus - int((num_slices - 1) / 2)
+        minmax[1] = in_focus + int((num_slices - 1) / 2) + 1
 
         if minmax[0] < 0:
             minmax[0] = 0
@@ -235,7 +238,7 @@ def rescaling(img_before, img_after):
             x_new = np.interp(y_new, y_vals, x_vals)
             img_rescaled[:, i] = x_new
         # img_before = img_rescaled
-        return img_rescaled, img_after, img_before.shape[0]/img_after.shape[0]
+        return img_rescaled, img_after, img_before.shape[0] / img_after.shape[0]
 
     # not necessary anymore to have it copied! change it later.
     else:  # copied the code but then for the images swapped, this is better memory wise (I think):
@@ -256,7 +259,7 @@ def rescaling(img_before, img_after):
             x_new = np.interp(y_new, y_vals, x_vals)
             img_rescaled[:, i] = x_new
         # img_after = img_rescaled
-        return img_before, img_rescaled, img_before.shape[0]/img_after.shape[0]
+        return img_before, img_rescaled, img_before.shape[0] / img_after.shape[0]
 
 
 def overlay(img_before, img_after, max_shift=5):
@@ -461,7 +464,7 @@ def create_diff_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, 
         y_min = np.min(index_mask[0])
         x_max = np.max(index_mask[1])
         y_max = np.max(index_mask[0])
-        if x_max - x_min < mask.shape[1]/3:
+        if x_max - x_min < mask.shape[1] / 3:
             mask[y_min:y_max, x_min:x_max] = True
 
     return mask
@@ -487,7 +490,7 @@ def find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x'):
     elif ax == 'y':
         projection_before = np.sum(img_before_blurred, axis=1)
         minimal = np.min(projection_before)
-        projection_before[:int(img_before_blurred.shape[0]/6)] = minimal
+        projection_before[:int(img_before_blurred.shape[0] / 6)] = minimal
         projection_before[-int(img_before_blurred.shape[0] / 6):] = minimal
 
         projection_after = np.sum(img_after_blurred, axis=1)
@@ -1272,12 +1275,12 @@ def detect_blobs(binary_end_result, min_circ=0, max_circ=1, min_area=0, max_area
             circy, circx = circle_perimeter(center_y, center_x, radius,
                                             shape=im.shape)
             im[circy, circx] = (220, 20, 20, 255)
-            im[circy+1, circx] = (220, 20, 20, 255)
-            im[circy, circx+1] = (220, 20, 20, 255)
-            im[circy+1, circx+1] = (220, 20, 20, 255)
-            im[circy-1, circx] = (220, 20, 20, 255)
-            im[circy, circx-1] = (220, 20, 20, 255)
-            im[circy-1, circx-1] = (220, 20, 20, 255)
+            im[circy + 1, circx] = (220, 20, 20, 255)
+            im[circy, circx + 1] = (220, 20, 20, 255)
+            im[circy + 1, circx + 1] = (220, 20, 20, 255)
+            im[circy - 1, circx] = (220, 20, 20, 255)
+            im[circy, circx - 1] = (220, 20, 20, 255)
+            im[circy - 1, circx - 1] = (220, 20, 20, 255)
 
         ax.imshow(im)
         plt.show()

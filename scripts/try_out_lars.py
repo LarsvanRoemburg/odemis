@@ -49,6 +49,39 @@ data_paths_after = ["/home/victoria/Documents/Lars/data/1/FOV2_GFP_cp04.tif",
                     "FOV6_checkpoint02_ch00.tiff"
                     ]
 
+data_paths_true_masks = ["/home/victoria/Documents/Lars/data/1/true_mask_FOV2_GFP_cp04.tif",
+                         "/home/victoria/Documents/Lars/data/2/true_mask_FOV1_checkpoint_01.tiff",
+                         "/home/victoria/Documents/Lars/data/3/true_mask_FOV4_checkpoint_01.tiff",
+                         "/home/victoria/Documents/Lars/data/4/METEOR_images/true_mask_FOV3_checkpoint_01.tif",
+                         "/home/victoria/Documents/Lars/data/6/true_mask_20201002_FOV2_checkpoint_005_stack_001.tiff",
+                         "/home/victoria/Documents/Lars/data/7/FOV3_Meteor_stacks/Lamella_slices_tif"
+                         "/true_mask_EA010_8_FOV3_final-19.tif",
+                         "/home/victoria/Documents/Lars/data/meteor1/FOV3_Meteor_stacks/"
+                         "true_mask_EA010_8_FOV3_final.tiff",
+                         "/home/victoria/Documents/Lars/data/XA Yeast-20220215T093027Z-001/XA "
+                         "Yeast/true_mask_20200918-zstack_400nm.tiff",
+                         "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Mammalian_cells"
+                         "/true_mask_FOV7_after_GFP.tif",
+                         "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Mammalian_cells"
+                         "/true_mask_FOV9_after_GFP.tif",
+                         "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Mammalian_cells"
+                         "/true_mask_FOV11_after_GFP.tif",
+                         "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Mammalian_cells"
+                         "/true_mask_FOV12_after_GFP.tif",
+                         "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Yeast_eGFP-Ede1"
+                         "/true_mask_G2_FOV1_checkpoint03.tif",
+                         "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Yeast_eGFP-Ede1"
+                         "/true_mask_G2_FOV2_checkpoint04.tif",
+                         "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Yeast_eGFP-Ede1"
+                         "/true_mask_G2_FOV3_checkpoint04.tif",
+                         "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/Yeast_eGFP-Ede1"
+                         "/true_mask_G2_FOV4_checkpoint04.tif",
+                         "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/negative_examples/yeast/"
+                         "true_mask_FOV3_new_final_lamella.tiff",
+                         "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/negative_examples/yeast/"
+                         "true_mask_FOV6_checkpoint02_ch00.tiff"
+                         ]
+
 ll = len(data_paths_before)
 channel_before = np.zeros(ll, dtype=int)
 channel_before[7] = 1
@@ -64,7 +97,7 @@ blur = 25
 max_slices = 30
 cropping = True  # if true, the last images will be cropped to only the mask
 
-for nnn in np.arange(0, 10, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+for nnn in np.arange(2, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
     print("dataset nr. {}".format(nnn + 1))
     print(data_paths_before[nnn])
 
@@ -72,8 +105,9 @@ for nnn in np.arange(0, 10, 1, dtype=int):  # range(len(data_paths_after)) OR np
     # for data before milling
     img_before, img_after, meta_before, meta_after = get_image(data_paths_before[nnn], data_paths_after[nnn],
                                                                channel_before[nnn], channel_after[nnn],
-                                                               mode='in_focus', proj_mode='max')
-
+                                                               mode='projection', proj_mode='max')
+    plt.imshow(gaussian_filter(img_after, sigma=2))
+    plt.show()
     # print("Pixel sizes are the same: {}".format(meta_before["Pixel size"][0] == meta_after["Pixel size"][0]))
     #
     # # rescaling one image to the other if necessary
