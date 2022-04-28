@@ -8,20 +8,19 @@ from skimage.draw import circle_perimeter
 from skimage.util import img_as_ubyte
 from skimage.feature import canny
 from skimage.morphology import disk
-from skimage.filters.rank import gradient
+# from skimage.filters.rank import gradient
 from copy import deepcopy
 from odemis.dataio import tiff
 import cv2
 
 
-def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, which_channel=0, blur=20,
-                                          square_width=1 / 4, num_slices=5, disk_size=5, outlier_cutoff=99, mode='max'):
+def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, which_channel=0,
+                                          square_width=1 / 4, num_slices=5, outlier_cutoff=99, mode='max'):
     if data[0].shape[0] == 1:
         num_z = len(data[which_channel][0][0])
         print("#z-slices: {}".format(num_z))
         dat = data[which_channel][0][0]
         sharp = np.zeros(dat.shape[0])
-        selection_element = disk(disk_size)
         histo, bins = np.histogram(dat, bins=2000)
         histo = np.cumsum(histo)
         histo = histo / histo[-1] * 100
@@ -51,44 +50,24 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
                 minmax[w + 2] = 0
             elif minmax[w + 2] > dat[0].shape[1]:
                 minmax[w + 2] = dat[0].shape[1]
-        example_img = deepcopy(dat[0][minmax[0]:minmax[1], minmax[2]:minmax[3]])
-        high_freq_filter = np.zeros(example_img.shape)
-
-        for q in range(example_img.shape[0]):
-            for w in range(example_img.shape[1]):
-                high_freq_filter[q, w] = 1 * (
-                            (q - example_img.shape[0] / 2) ** 2 + (w - example_img.shape[1] / 2) ** 2 >=
-                            (example_img.shape[1] / 4) ** 2) * ((q - example_img.shape[0] / 2) ** 2 +
-                                                                (w - example_img.shape[1] / 2) ** 2 <=
-                                                                (example_img.shape[1] / 2) ** 2)
 
         for i in range(dat.shape[0]):
-            # print(i)
-            # dat[i][dat[i] > thr_out] = thr_out
-            img = deepcopy(dat[i][minmax[0]:minmax[1], minmax[2]:minmax[3]])  # [1000:1600, 1000:1600]
-            # img[img > thr_out] = thr_out
+            img = deepcopy(dat[i][minmax[0]:minmax[1], minmax[2]:minmax[3]])
             img = gaussian_filter(img, sigma=1)  # blur)  # 20
-            fft_img = np.log(np.abs(np.fft.fftshift(np.fft.fft2(np.fft.fftshift(img)))) ** 2)
-            high_freq = fft_img * high_freq_filter
-            sharp[i] = np.mean(high_freq)
-            # img = np.array(img / np.max(img) * 255, dtype=np.uint8)
-            # sharp[i] = np.mean(gradient(img, selection_element))
-            # if i >= num_slices:
-            #     if 1.01*sharp[i] < np.mean(sharp[i-num_slices:i]):
-            #         break
-        fig, ax = plt.subplots()
-        ax.plot(sharp)
-        sharp = gaussian_filter(sharp, sigma=1)
-        ax.plot(sharp)
-        sharp *= (1 - (2 * np.arange(num_z) / num_z - 1) ** 2 + 400) / 400
-        ax.plot(sharp)
-        sharp_max = np.where(sharp == np.max(sharp))[0][0]
-        sharp_min = np.where(sharp == np.min(sharp))[0][0]
-        # which one is closer to the central slice
-        if np.abs(sharp_max - num_z / 2) < np.abs(sharp_min - num_z / 2):
-            in_focus = sharp_max
-        else:
-            in_focus = sharp_min
+            sobel_x = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=5)
+            sobel_y = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=5)
+            grad = np.sqrt(sobel_x**2+sobel_y**2)
+            sharp[i] = np.var(grad)
+
+        # fig, ax = plt.subplots()
+        # ax.plot(sharp)
+        # sharp = gaussian_filter(sharp, sigma=1)
+        # ax.plot(sharp)
+        # ax.set_xlabel("z-slice")
+        # ax.set_ylabel("Intensity in ...")
+        # ax.set_title("Fourier")
+
+        in_focus = np.where(sharp == np.max(sharp))[0][0]
 
         minmax = np.zeros(2, dtype=int)  # y_min, y_max, x_min, x_max
         minmax[0] = in_focus - int((num_slices - 1) / 2)
@@ -356,19 +335,19 @@ def get_image(data_paths_before, data_paths_after, channel_before, channel_after
 
         if magni == 1:
             img_before = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos, milling_x_pos,
-                                                               channel_before, blur)
+                                                               channel_before)
             img_after = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos - shift[0],
-                                                              milling_x_pos - shift[1], channel_after, blur)
+                                                              milling_x_pos - shift[1], channel_after)
         elif magni > 1:
             img_before = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos, milling_x_pos,
-                                                               channel_before, blur)
+                                                               channel_before)
             img_after = find_focus_z_slice_and_outlier_cutoff(data_after_milling, (milling_y_pos - shift[0]) / magni,
-                                                              (milling_x_pos - shift[1]) / magni, channel_after, blur)
+                                                              (milling_x_pos - shift[1]) / magni, channel_after)
         elif magni < 1:
             img_before = find_focus_z_slice_and_outlier_cutoff(data_before_milling, (milling_y_pos - shift[0]) * magni,
-                                                               (milling_x_pos - shift[1]) * magni, channel_before, blur)
+                                                               (milling_x_pos - shift[1]) * magni, channel_before)
             img_after = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos, milling_x_pos,
-                                                              channel_after, blur)
+                                                              channel_after)
     elif mode == 'projection':
         data_before_milling = tiff.read_data(data_paths_before)
         meta_before = data_before_milling[channel_before].metadata

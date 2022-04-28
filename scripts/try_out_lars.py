@@ -97,7 +97,7 @@ blur = 25
 max_slices = 30
 cropping = True  # if true, the last images will be cropped to only the mask
 
-for nnn in np.arange(2, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+for nnn in np.arange(0, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
     print("dataset nr. {}".format(nnn + 1))
     print(data_paths_before[nnn])
 
@@ -105,9 +105,8 @@ for nnn in np.arange(2, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
     # for data before milling
     img_before, img_after, meta_before, meta_after = get_image(data_paths_before[nnn], data_paths_after[nnn],
                                                                channel_before[nnn], channel_after[nnn],
-                                                               mode='projection', proj_mode='max')
-    plt.imshow(gaussian_filter(img_after, sigma=2))
-    plt.show()
+                                                               mode='in_focus', proj_mode='max')
+
     # print("Pixel sizes are the same: {}".format(meta_before["Pixel size"][0] == meta_after["Pixel size"][0]))
     #
     # # rescaling one image to the other if necessary
