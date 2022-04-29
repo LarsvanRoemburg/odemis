@@ -86,10 +86,6 @@ ll = len(data_paths_before)
 channel_before = np.zeros(ll, dtype=int)
 channel_before[7] = 1
 channel_after = np.zeros(ll, dtype=int)
-# manual_thr_out_before = np.zeros(ll, dtype=int)
-# manual_thr_out_after = np.zeros(ll, dtype=int)
-# manual_thr_out_before[:9] = np.array([300, 700, 3000, 300, 300, 300, 300, 200, 750])
-# manual_thr_out_after[:9] = np.array([300, 700, 3000, 300, 300, 300, 300, 8000, 900])
 
 threshold_mask = 0.3
 threshold_end = 0.25
@@ -97,7 +93,7 @@ blur = 25
 max_slices = 30
 cropping = True  # if true, the last images will be cropped to only the mask
 
-for nnn in np.arange(0, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+for nnn in np.arange(10, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
     print("dataset nr. {}".format(nnn + 1))
     print(data_paths_before[nnn])
 
@@ -107,92 +103,87 @@ for nnn in np.arange(0, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np
                                                                channel_before[nnn], channel_after[nnn],
                                                                mode='in_focus', proj_mode='max')
 
-    # print("Pixel sizes are the same: {}".format(meta_before["Pixel size"][0] == meta_after["Pixel size"][0]))
-    #
-    # # rescaling one image to the other if necessary
-    # img_before, img_after, magni = rescaling(img_before, img_after)
-    #
-    # # calculate the shift between the two images
-    # img_after, shift = overlay(img_before, img_after, max_shift=4)  # max_shift between 1 and inf
-    #
-    # # preprocessing steps of the images: blurring the image
-    # img_before, img_after, img_before_blurred, img_after_blurred = blur_and_norm(img_before, img_after, blur=blur)
-    #
-    # # detecting two parallel lines
-    # # the max difference in this projection is where there is milled
-    # mid_milling_site = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred)
-    #
-    # # here I try line detection
-    # x_lines, y_lines, lines, edges = find_lines(img_after_blurred)
-    # # lines = None
-    #
-    # # look at the lines and see if they have the same angle and rough distance between them
-    # angle_lines = calculate_angles(lines)
-    # x_lines2, y_lines2, lines2, angle_lines2 = combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines,
-    #                                                                         mid_milling_site,
-    #                                                                         img_after_blurred.shape, max_dist=1/30)
-    #
-    # groups = group_single_lines(x_lines2, y_lines2, lines2, angle_lines2, max_distance=img_after.shape[1] / 30)
-    #
-    # after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2, mid_milling_site,
-    #                                         max_dist=img_after.shape[1] / 5,
-    #                                         min_dist=img_after.shape[1] / 25)
-    #
-    # show_line_detection_steps(img_after, img_after_blurred, edges, lines, lines2, after_grouping)
-    #
-    # mask_lines = create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_after.shape,
-    #                               all_groups=False)
-    # mask_lines_all = create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_after.shape,
-    #                                   all_groups=True)
-    # # fig2, ax2 = plt.subplots()
-    # # ax2.imshow(mask_lines * img_after)
-    # # ax2.set_title("with the first 2 groups")
-    #
-    # # calculating the difference between the two images and creating a mask
-    # mask = create_diff_mask(img_before_blurred, img_after_blurred, squaring=False)
-    #
-    # mask2 = create_diff_mask(img_before_blurred, img_after_blurred, squaring=True)
-    # masked_img2, extents2 = create_masked_img(img_after, mask2, cropping)
-    #
-    # mask_combined, combined = combine_masks(mask, mask_lines, mask_lines_all, squaring=False)
-    #
-    # masked_img, extents = create_masked_img(img_after, mask_combined, cropping)
-    #
-    # # fig3, ax3 = plt.subplots(ncols=4)
-    # # ax3[0].imshow(mask)
-    # # ax3[0].set_title("Difference mask")
-    # # ax3[1].imshow(mask_lines)
-    # # ax3[1].set_title("Line mask")
-    # # ax3[2].imshow((5.0*mask_lines + 5.0*mask))
-    # # ax3[2].set_title("Overlap")
-    # # ax3[3].imshow(mask_combined)
-    # # ax3[3].set_title("Masks combined")
-    #
-    # # setting a threshold for the image_after within the mask
-    # binary_end_1b, binary_end_result1 = create_binary_end_image(mask_combined, masked_img, threshold_end,
-    #                                                             open_close=True)
-    # binary_end_2b, binary_end_result2 = create_binary_end_image(mask2, masked_img2, threshold_end, open_close=True,
-    #                                                             rid_of_back_signal=True)
-    #
-    # # fig, ax = plt.subplots(ncols=2)
-    # # ax[0].imshow(binary_end_result1)
-    # # ax[1].imshow(binary_end_1b)
-    # # plt.show()
-    # # print("binary image made")
-    #
-    # # here I start with trying to detect circles
-    # key_points, yxr = detect_blobs(binary_end_result2, min_circ=0.6, min_area=7**2/2, plotting=False)
-    #
-    # print("circle detection complete")
-    #
-    # plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img,
-    #                  masked_img2, binary_end_result1, binary_end_result2, cropping, extents, extents2)
-    #
-    del img_before, img_after, meta_before, meta_after
-    # del img_before, img_before_blurred, img_after, img_after_blurred, \
-    #     mask, mask2, masked_img, masked_img2, binary_end_result1, \
-    #     binary_end_result2, meta_before, meta_after, edges, lines
+    print("Pixel sizes are the same: {}".format(meta_before["Pixel size"][0] == meta_after["Pixel size"][0]))
+
+    # rescaling one image to the other if necessary
+    img_before, img_after, magni = rescaling(img_before, img_after)
+
+    # calculate the shift between the two images
+    img_after, shift = overlay(img_before, img_after, max_shift=4)  # max_shift between 1 and inf
+
+    # preprocessing steps of the images: blurring the image
+    img_before, img_after, img_before_blurred, img_after_blurred = blur_and_norm(img_before, img_after, blur=blur)
+
+    # detecting two parallel lines
+    # the max difference in this projection is where there is milled
+    mid_milling_site = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred)
+
+    # here I try line detection
+    x_lines, y_lines, lines, edges = find_lines(img_after_blurred)
+    # apparently for mammalian cell samples, setting the hysteresis threshold to 0 and 0 is better
+
+    # look at the lines and see if they have the same angle and rough distance between them
+    angle_lines = calculate_angles(lines)
+    x_lines2, y_lines2, lines2, angle_lines2 = combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines,
+                                                                            mid_milling_site,
+                                                                            img_after_blurred.shape, max_dist=1/30)
+
+    groups = group_single_lines(x_lines2, y_lines2, lines2, angle_lines2, max_distance=img_after.shape[1] / 30)
+
+    after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2, mid_milling_site,
+                                            max_dist=img_after.shape[1] / 5,
+                                            min_dist=img_after.shape[1] / 25)
+
+    show_line_detection_steps(img_after, img_after_blurred, edges, lines, lines2, after_grouping)
+
+    mask_lines = create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_after.shape,
+                                  all_groups=False)
+    mask_lines_all = create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_after.shape,
+                                      all_groups=True)
+
+    # calculating the difference between the two images and creating a mask
+    mask = create_diff_mask(img_before_blurred, img_after_blurred, squaring=False)
+
+    mask2 = create_diff_mask(img_before_blurred, img_after_blurred, squaring=True)
+    masked_img2, extents2 = create_masked_img(img_after, mask2, cropping)
+
+    mask_combined, combined = combine_masks(mask, mask_lines, mask_lines_all, squaring=False)
+
+    masked_img, extents = create_masked_img(img_after, mask_combined, cropping)
+
+    # fig3, ax3 = plt.subplots(ncols=4)
+    # ax3[0].imshow(mask)
+    # ax3[0].set_title("Difference mask")
+    # ax3[1].imshow(mask_lines)
+    # ax3[1].set_title("Line mask")
+    # ax3[2].imshow((5.0*mask_lines + 5.0*mask))
+    # ax3[2].set_title("Overlap")
+    # ax3[3].imshow(mask_combined)
+    # ax3[3].set_title("Masks combined")
+
+    # setting a threshold for the image_after within the mask
+    binary_end_1b, binary_end_result1 = create_binary_end_image(mask_combined, masked_img, threshold_end,
+                                                                open_close=True)
+    binary_end_2b, binary_end_result2 = create_binary_end_image(mask2, masked_img2, threshold_end, open_close=True,
+                                                                rid_of_back_signal=True)
+
+    # fig, ax = plt.subplots(ncols=2)
+    # ax[0].imshow(binary_end_result1)
+    # ax[1].imshow(binary_end_1b)
+    # plt.show()
+    # print("binary image made")
+
+    # here I start with trying to detect circles
+    key_points, yxr = detect_blobs(binary_end_result2, min_circ=0.6, min_area=7**2/2, plotting=False)
+
+    print("circle detection complete")
+
+    plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img,
+                     masked_img2, binary_end_result1, binary_end_result2, cropping, extents, extents2)
+
+    del img_before, img_before_blurred, img_after, img_after_blurred, \
+        mask, mask2, masked_img, masked_img2, binary_end_result1, \
+        binary_end_result2, meta_before, meta_after, edges, lines
     gc.collect()
 
     print("Successful!\n")
-plt.show()

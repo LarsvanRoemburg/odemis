@@ -7,8 +7,6 @@ from scipy.signal import fftconvolve
 from skimage.draw import circle_perimeter
 from skimage.util import img_as_ubyte
 from skimage.feature import canny
-from skimage.morphology import disk
-# from skimage.filters.rank import gradient
 from copy import deepcopy
 from odemis.dataio import tiff
 import cv2
@@ -16,11 +14,39 @@ import cv2
 
 def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, which_channel=0,
                                           square_width=1 / 4, num_slices=5, outlier_cutoff=99, mode='max'):
-    if data[0].shape[0] == 1:
+    """
+    This function first makes an outlier cutoff in the whole stack of slices. Then for each slice it calculates the
+    gradient with the sobel operator of opencv around the rough estimate of the milling site (obtained in get_image()).
+    The variance of the gradient will be used as a metric to determine which slice is in focus:
+    the slice with the most variance is the one most in focus. In the end the function takes a small number of slices
+    around the in focus slice and projects them together in the final result,
+    with a maximum or mean intensity projection.
+
+    Parameters:
+        data (list):            The raw data input from reading the .tif/.tiff/.ome.tiff file.
+        milling_pos_y (int):    The rough estimate for the y-position of the milling site.
+        milling_pos_x (int):    The rough estimate for the x-position of the milling site.
+        which_channel (int):    The data can have multiple channels recorded, here you specify which to use.
+        square_width (float):   How big the square should be in which the gradient is calculated in fraction of the
+                                image size.
+        num_slices (int):       The number of slices around the in focus slice used for the final image outputted
+        outlier_cutoff (int):   At which percentage the intensity histogram should be cut off.
+        mode (string):          To indicate which method to use with the final z-projection, two options:
+                                    'max': maximum intensity projection
+                                    'mean': average intensity projection
+
+        Returns:
+            img (ndarray):      The max or mean projected #num_slices slices around the in focus slice.
+
+    """
+
+    if data[0].shape[0] == 1:  # if it is 1, there are multiple slices
         num_z = len(data[which_channel][0][0])
         print("#z-slices: {}".format(num_z))
-        dat = data[which_channel][0][0]
+        dat = data[which_channel][0][0]  # to convert the data to a [num_slices, N, M] shape
         sharp = np.zeros(dat.shape[0])
+
+        # to calculate the outlier threshold and apply it
         histo, bins = np.histogram(dat, bins=2000)
         histo = np.cumsum(histo)
         histo = histo / histo[-1] * 100
@@ -29,16 +55,19 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
         print("outlier threshold is at {}".format(thr_out))
         dat[dat > thr_out] = thr_out
 
-        minmax = np.zeros(4, dtype=int)  # y_min, y_max, x_min, x_max
+        # to create the square corner coordinates in which we will find the gradient
+        minmax = np.zeros(4, dtype=int)  # in the form [y_min, y_max, x_min, x_max]
         minmax[0] = int(milling_pos_y - dat[0].shape[0] * square_width / 2)
         minmax[1] = int(milling_pos_y + dat[0].shape[0] * square_width / 2)
         minmax[2] = int(milling_pos_x - dat[0].shape[1] * square_width / 2)
         minmax[3] = int(milling_pos_x + dat[0].shape[1] * square_width / 2)
 
+        # The y-position is not always estimated right so if it is too close to the borders, we will just use the middle
         if milling_pos_y > dat[0].shape[0] * 4 / 5 or milling_pos_y <= dat[0].shape[0] / 5:
             minmax[0] = dat[0].shape[0] / 5
             minmax[1] = dat[0].shape[0] * 4 / 5
 
+        # it is possible for the corner coordinates to be outside the image, here we correct for that
         for w in range(2):
             # x values
             if minmax[w] < 0:
@@ -51,6 +80,7 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
             elif minmax[w + 2] > dat[0].shape[1]:
                 minmax[w + 2] = dat[0].shape[1]
 
+        # here for each slice the gradient and the variance is calculated
         for i in range(dat.shape[0]):
             img = deepcopy(dat[i][minmax[0]:minmax[1], minmax[2]:minmax[3]])
             img = gaussian_filter(img, sigma=1)  # blur)  # 20
@@ -59,26 +89,21 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
             grad = np.sqrt(sobel_x**2+sobel_y**2)
             sharp[i] = np.var(grad)
 
-        # fig, ax = plt.subplots()
-        # ax.plot(sharp)
-        # sharp = gaussian_filter(sharp, sigma=1)
-        # ax.plot(sharp)
-        # ax.set_xlabel("z-slice")
-        # ax.set_ylabel("Intensity in ...")
-        # ax.set_title("Fourier")
-
         in_focus = np.where(sharp == np.max(sharp))[0][0]
 
-        minmax = np.zeros(2, dtype=int)  # y_min, y_max, x_min, x_max
+        # which slices to project
+        minmax = np.zeros(2, dtype=int)  # z_min, z_max
         minmax[0] = in_focus - int((num_slices - 1) / 2)
         minmax[1] = in_focus + int((num_slices - 1) / 2) + 1
 
+        # border constraints
         if minmax[0] < 0:
             minmax[0] = 0
         if minmax[1] > dat.shape[0]:
             minmax[1] = dat.shape[0]
 
         print(f"In focus slice is: {in_focus}.")
+        # the z-projection
         if mode == 'max':
             img = np.max(dat[minmax[0]:minmax[1]], axis=0)
             print(dat[minmax[0]:minmax[1]].shape)
@@ -87,22 +112,17 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
         else:
             logging.warning("Mode input not recognized, maximum intensity projection is used.")
             img = np.max(dat[minmax[0]:minmax[1]], axis=0)
-    else:
+    else:  # if data[0].shape[0] != 1, there is only one slice
         print("#z-slices: 1")
         img = np.array(data[which_channel], dtype=int)
         del data
 
+        # to calculate the outlier threshold and apply it
         histo, bins = np.histogram(img, bins=2000)
         histo = np.cumsum(histo)
         histo = histo / histo[-1] * 100
         plc = np.min(np.where(histo > outlier_cutoff))
         thr_out = bins[plc] / 2 + bins[plc + 1] / 2
-        # ax.plot(bins[1:] - (bins[2] - bins[1]) / 2, histo)
-        # ax.set_title("Normalized cumulative histogram of #{}".format(e))
-        # ax.set_ylabel("#pixels (%)")
-        # ax.set_xlabel("Intensity value ()")
-        # print("outlier threshold is at {}".format(thr_out))
-        # print("max outlier value is {}".format(bins[-1]))
         img[img > thr_out] = thr_out
 
     return np.array(img, dtype=int)
@@ -128,29 +148,28 @@ def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, outlier_c
         img (ndarray): the image returned as a numpy array
     """
 
-    # fig, ax = plt.subplots()
-    if data[0].shape[0] == 1:
+    if data[0].shape[0] == 1:  # if it is 1, there are multiple slices
         num_z = len(data[which_channel][0][0])
         print("#z-slices: {}".format(num_z))
-        if num_z <= max_slices:  # if there are too many slices, take the #max_slices in the middle
+
+        # if there are too many slices, take the #max_slices in the middle
+        if num_z <= max_slices:
             img = np.array(data[which_channel][0][0], dtype=int)
         else:
             s = int((num_z - max_slices) / 2)
             img = np.array(data[which_channel][0][0][s:-s], dtype=int)
 
+        # to calculate the outlier threshold and apply it
         histo, bins = np.histogram(img, bins=2000)
         histo = np.cumsum(histo)
         histo = histo / histo[-1] * 100
         plc = np.min(np.where(histo > outlier_cutoff))
         thr_out = bins[plc] / 2 + bins[plc + 1] / 2
-        # ax.plot(bins[1:]-(bins[2]-bins[1])/2, histo)
-        # ax.set_title("Normalized cumulative histogram before cutoff")
-        # ax.set_ylabel("#pixels (%)")
-        # ax.set_xlabel("Intensity value ()")
+
         print("outlier threshold is at {}".format(thr_out))
-        # print("max outlier value is {}".format(bins[-1]))
         img[img > thr_out] = thr_out
 
+        # the z-projection
         if mode == 'max':
             img = np.max(img, axis=0)
         elif mode == 'mean':
@@ -159,22 +178,17 @@ def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, outlier_c
             logging.warning("Mode input not recognized, maximum intensity projection is used.")
             img = np.max(img, axis=0)
 
-    else:
+    else:  # if data[0].shape[0] != 1, there is only one slice
         print("#z-slices before: 1")
         img = np.array(data[which_channel], dtype=int)
         del data
 
+        # to calculate the outlier threshold and apply it
         histo, bins = np.histogram(img, bins=2000)
         histo = np.cumsum(histo)
         histo = histo / histo[-1] * 100
         plc = np.min(np.where(histo > outlier_cutoff))
         thr_out = bins[plc] / 2 + bins[plc + 1] / 2
-        # ax.plot(bins[1:] - (bins[2] - bins[1]) / 2, histo)
-        # ax.set_title("Normalized cumulative histogram before cutoff")
-        # ax.set_ylabel("#pixels (%)")
-        # ax.set_xlabel("Intensity value ()")
-        # print("outlier threshold is at {}".format(thr_out))
-        # print("max outlier value is {}".format(bins[-1]))
         img[img > thr_out] = thr_out
 
     return img
@@ -193,6 +207,7 @@ def rescaling(img_before, img_after):
     Returns:
         img_before (ndarray):   If it was the smaller image, the rescaled image, otherwise the same as the input image.
         img_after (ndarray):    If it was the smaller image, the rescaled image, otherwise the same as the input image.
+        scaling_factor (float): The ratio between the two image sizes.
     """
 
     if img_before.shape == img_after.shape:
@@ -203,6 +218,8 @@ def rescaling(img_before, img_after):
         img_rescaled = np.zeros(img_after.shape)
         d_pix = img_before.shape[0] / img_after.shape[0]  # here we assume that the difference in x is the same
         # as in y as pixels are squares
+
+        # interpolate for the y values of the image
         for i in range(img_before.shape[0]):
             x_vals = np.arange(0, len(img_before[i, :]), 1)
             y_vals = img_before[i, :]
@@ -210,20 +227,23 @@ def rescaling(img_before, img_after):
             y_new = np.interp(x_new, x_vals, y_vals)
             img_rescaled[i, :] = y_new
 
+        # interpolate for the x values of the image
         for i in range(img_rescaled.shape[1]):
             y_vals = np.arange(0, len(img_before[:, 0]), 1)
             x_vals = img_rescaled[:img_before.shape[0], i]
             y_new = np.arange(0, len(img_before[:, 0]), d_pix)
             x_new = np.interp(y_new, y_vals, x_vals)
             img_rescaled[:, i] = x_new
+
         # img_before = img_rescaled
         return img_rescaled, img_after, img_before.shape[0] / img_after.shape[0]
 
-    # not necessary anymore to have it copied! change it later.
-    else:  # copied the code but then for the images swapped, this is better memory wise (I think):
+    else:  # copied the code but then for the images swapped, not really necessary (anymore now it is a function)
         img_rescaled = np.zeros(img_before.shape)
         d_pix = img_after.shape[0] / img_before.shape[0]  # here we assume that the difference in x is the same
         # as in y as pixels are squares
+
+        # interpolate for the y values of the image
         for i in range(img_after.shape[0]):
             x_vals = np.arange(0, len(img_after[i, :]), 1)
             y_vals = img_after[i, :]
@@ -231,12 +251,14 @@ def rescaling(img_before, img_after):
             y_new = np.interp(x_new, x_vals, y_vals)
             img_rescaled[i, :] = y_new
 
+        # interpolate for the x values of the image
         for i in range(img_rescaled.shape[1]):
             y_vals = np.arange(0, len(img_after[:, 0]), 1)
             x_vals = img_rescaled[:img_after.shape[0], i]
             y_new = np.arange(0, len(img_after[:, 0]), d_pix)
             x_new = np.interp(y_new, y_vals, x_vals)
             img_rescaled[:, i] = x_new
+
         # img_after = img_rescaled
         return img_before, img_rescaled, img_before.shape[0] / img_after.shape[0]
 
@@ -253,7 +275,7 @@ def overlay(img_before, img_after, max_shift=5):
                                 so no large shifts are needed. On all sides of the convolution image,
                                 1/max_shift of the image is set to be zero. So with 1/8 you have a max shift of 3/8 in
                                 x and y direction (-3/8*img_shape, 3/8*img_shape). If you don't want a constraint on
-                                the shift, set max_shift to <=1
+                                the shift, set max_shift to <=1.
 
     Returns:
         img_after (ndarray):    The shifted image, the values outside the boundaries of the image are set to the max
@@ -267,12 +289,14 @@ def overlay(img_before, img_after, max_shift=5):
     img_after = img_after - mean_after
     conv = fftconvolve(img_before, img_after[::-1, ::-1], mode='same')
 
-    if (int(conv.shape[0] / max_shift) > 0) & (max_shift > 1):  # constraints
+    # max_shift constraints
+    if (int(conv.shape[0] / max_shift) > 0) & (max_shift > 1):
         conv[:int(conv.shape[0] / max_shift), :] = 0
         conv[-int(conv.shape[0] / max_shift):, :] = 0
         conv[:, :int(conv.shape[1] / max_shift)] = 0
         conv[:, -int(conv.shape[1] / max_shift):] = 0
 
+    # calculating the shift in y and x with finding the maximum in the convolution
     shift = np.where(conv == np.max(conv))
     shift = np.asarray(shift)
     shift[0] = shift[0] - img_after.shape[0] / 2
@@ -303,61 +327,106 @@ def overlay(img_before, img_after, max_shift=5):
     return img_after, shift
 
 
-def get_image(data_paths_before, data_paths_after, channel_before, channel_after, max_slices=30, mode='projection',
-              proj_mode='max', blur=25):
+def get_image(data_paths_before, data_paths_after, channel_before, channel_after, max_slices_proj=30,
+              max_slices_focus=5, mode='projection', proj_mode='max', blur=25):
+    """
+    Here we go from two PATHS of two files to two output images from before and after milling. You can specify if you
+    want to use a z-stack projection or to find the in focus slice. For both functions you'll need to specify which
+    projection mode to use: maximum or mean intensity projection. See the docstrings of
+    z_projection_and_outlier_cutoff() and find_focus_z_slice_and_outlier_cutoff() for more info on the individual
+    functions.
+
+    Parameters:
+        data_paths_before (string): The PATH to the tiff file of the data before milling.
+        data_paths_after (string):  The PATH to the tiff file of the data after milling.
+        channel_before (int):       Which channel to use in the tiff file before milling.
+        channel_after (int):        Which channel to use in the tiff file after milling.
+        max_slices_proj (int):      How many slices are maximally used in the z-projection (for both in focus and
+                                    z-projection!).
+        max_slices_focus (int):     How many slices around the in focus slice are used and projected (only for in focus
+                                    mode).
+        mode (string):              To indicate which get_image method to use, two options:
+                                        'projection': the z-projection
+                                        'in_focus': find the in focus slice
+        proj_mode (string):         To indicate which method to use with the z-projection, two options:
+                                        'max': maximum intensity projection
+                                        'mean': average intensity projection
+        blur (int):                 The sigma for the gaussian blurring in finding the rough estimates for position
+                                    milling site (first blur_and_norm() and then find_x_or_y_pos_milling_site()).
+
+    Returns:
+        img_before (ndarray):       The output image of the data before milling.
+        img_after (ndarray):        The output image of the data after milling.
+        meta_before (dict):         The metadata of the tiff file before milling.
+        meta_after (dict):          The metadata of the tiff file after milling.
+    """
+
     if mode == 'in_focus':
+        # reading the data
         data_before_milling = tiff.read_data(data_paths_before)
         meta_before = data_before_milling[channel_before].metadata
         data_after_milling = tiff.read_data(data_paths_after)
         meta_after = data_after_milling[channel_after].metadata
+
+        # if both data sets have only one slice, just output those.
         if data_before_milling[0].shape[0] != 1 and data_after_milling[0].shape[0] != 1:
-            img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices, channel_before,
+            img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices_proj, channel_before,
                                                          mode=proj_mode)
-            img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices, channel_after, mode=proj_mode)
+            img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices_proj, channel_after,
+                                                        mode=proj_mode)
+
             return img_before, img_after, meta_before, meta_after
 
-        img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices, channel_before,
+        # creating projection images for finding a rough estimate for milling site position
+        img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices_proj, channel_before,
                                                      mode=proj_mode)
-        img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices, channel_after, mode=proj_mode)
+        img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices_proj, channel_after, mode=proj_mode)
 
         # rescaling one image to the other if necessary
         img_before, img_after, magni = rescaling(img_before, img_after)
         print(f"scaling factor is: {magni}")
         # calculate the shift between the two images
-        img_after, shift = overlay(img_before, img_after, max_shift=4)  # max_shift between 1 and inf
+        img_after, shift = overlay(img_before, img_after, max_shift=4)
         # shift is [dy, dx]
 
-        # preprocessing steps of the images: blurring the image
+        # blurring the images
         img_before, img_after, img_before_blurred, img_after_blurred = blur_and_norm(img_before, img_after, blur=blur)
 
+        # finding the estimates for the milling site position
         milling_x_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x')
         milling_y_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='y')
 
+        # finding the in focus slice.
+        # because the raw data is not yet scaled properly, the position needs to be adjusted for that
         if magni == 1:
             img_before = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos, milling_x_pos,
-                                                               channel_before)
+                                                               channel_before, num_slices=max_slices_focus)
             img_after = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos - shift[0],
-                                                              milling_x_pos - shift[1], channel_after)
+                                                              milling_x_pos - shift[1], channel_after,
+                                                              num_slices=max_slices_focus)
         elif magni > 1:
             img_before = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos, milling_x_pos,
-                                                               channel_before)
+                                                               channel_before, num_slices=max_slices_focus)
             img_after = find_focus_z_slice_and_outlier_cutoff(data_after_milling, (milling_y_pos - shift[0]) / magni,
-                                                              (milling_x_pos - shift[1]) / magni, channel_after)
+                                                              (milling_x_pos - shift[1]) / magni, channel_after,
+                                                              num_slices=max_slices_focus)
         elif magni < 1:
             img_before = find_focus_z_slice_and_outlier_cutoff(data_before_milling, (milling_y_pos - shift[0]) * magni,
-                                                               (milling_x_pos - shift[1]) * magni, channel_before)
+                                                               (milling_x_pos - shift[1]) * magni, channel_before,
+                                                               num_slices=max_slices_focus)
             img_after = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos, milling_x_pos,
-                                                              channel_after)
+                                                              channel_after, num_slices=max_slices_focus)
     elif mode == 'projection':
+        # reading the data and just make a z-projection
         data_before_milling = tiff.read_data(data_paths_before)
         meta_before = data_before_milling[channel_before].metadata
-        img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices, channel_before,
+        img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices_proj, channel_before,
                                                      mode=proj_mode)
         del data_before_milling
 
         data_after_milling = tiff.read_data(data_paths_after)
         meta_after = data_after_milling[channel_after].metadata
-        img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices, channel_after, mode=proj_mode)
+        img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices_proj, channel_after, mode=proj_mode)
 
         del data_after_milling
 
@@ -386,20 +455,21 @@ def blur_and_norm(img_before, img_after, blur=25):
         img_after_blurred (ndarray):    The blurred, normalized image after milling.
     """
 
+    # blurring the images
     img_before_blurred = gaussian_filter(img_before, sigma=blur)
     img_after_blurred = gaussian_filter(img_after, sigma=blur)
 
-    # preprocessing steps of the images: normalization of blurred images to [0,1] interval
+    # normalization of the blurred images to [0,1] interval
     base_lvl_before = np.min(img_before_blurred)
     base_lvl_after = np.min(img_after_blurred)
     img_before_blurred = (img_before_blurred - base_lvl_before) / (np.max(img_before_blurred) - base_lvl_before)
     img_after_blurred = (img_after_blurred - base_lvl_after) / (np.max(img_after_blurred) - base_lvl_after)
 
-    # preprocessing steps of the images: normalization of initial images to [0,1] interval
+    # normalization of the initial images to [0,1] interval
+    # you take base_lvl of the blurred images to be the minimum intensity value because lower intensity values are
+    # probably due to noise.
     img_before = (img_before - base_lvl_before) / (np.max(img_before) - base_lvl_before)
     img_after = (img_after - base_lvl_after) / (np.max(img_after) - base_lvl_after)
-
-    # you take base_lvl of blurred image because of noise in the initial image (the range would be bigger than needed)
     img_before[img_before < 0] = 0
     img_after[img_after < 0] = 0
 
@@ -426,23 +496,29 @@ def create_diff_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, 
     """
 
     # calculating the difference between the two images and creating a mask
-    diff = img_before_blurred - 1.5 * img_after_blurred  # times 1.5 to account for intensity differences (more robust)
+    # img_after_blurred times 1.5 to account for intensity differences outside the milling site (more robust)
+    diff = img_before_blurred - 1.5 * img_after_blurred
     mask = diff >= threshold_mask
+
+    # binary opening of the mask
     if open_iter >= 1:
-        mask = binary_opening(mask, iterations=open_iter)  # First opening int(blur / 2)
+        mask = binary_opening(mask, iterations=open_iter)
+
+    # binary erosion of the mask
     if ero_iter >= 1:
-        # if the edges give too much signal we can erode the mask a bit more
         mask = binary_erosion(mask, iterations=ero_iter)
 
-    # to crop and/or square the image around the ROI if possible and wanted: cropping = True and/or squaring = True
     index_mask = np.where(mask)
 
-    # squaring the mask
+    # squaring the mask if squaring=True and there is a mask found
     if squaring & (len(index_mask[0]) != 0):
         x_min = np.min(index_mask[1])
         y_min = np.min(index_mask[0])
         x_max = np.max(index_mask[1])
         y_max = np.max(index_mask[0])
+
+        # if the square is too big, it will not be squared because it indicates that something went wrong
+        # with the masking (a milling site is not so big).
         if x_max - x_min < mask.shape[1] / 3:
             mask[y_min:y_max, x_min:x_max] = True
 
@@ -466,18 +542,19 @@ def find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x'):
     if ax == 'x':
         projection_before = np.sum(img_before_blurred, axis=0)
         projection_after = np.sum(img_after_blurred, axis=0)
+
     elif ax == 'y':
         projection_before = np.sum(img_before_blurred, axis=1)
-        minimal = np.min(projection_before)
-        projection_before[:int(img_before_blurred.shape[0] / 6)] = minimal
-        projection_before[-int(img_before_blurred.shape[0] / 6):] = minimal
-
         projection_after = np.sum(img_after_blurred, axis=1)
-        # minimal = np.min(projection_after)
-        # projection_after[:int(img_after_blurred.shape[0] / 6), :] = minimal
-        # projection_after[-int(img_after_blurred.shape[0] / 6):, :] = minimal
+
     else:
         raise NameError("ax does not have the correct input")
+
+    # constraints on the position: not too close to the borders
+    minimal = np.min(projection_before)
+    projection_before[:int(img_before_blurred.shape[0] / 7)] = minimal
+    projection_before[-int(img_before_blurred.shape[0] / 7):] = minimal
+
     diff_proj = projection_before - projection_after
     mid_milling_site = np.where(diff_proj == np.max(diff_proj))[0][0]
     return mid_milling_site
@@ -514,23 +591,22 @@ def find_lines(img_after_blurred, blur=10, low_thres_edges=0.1, high_thres_edges
     """
 
     image = img_as_ubyte(img_after_blurred)
+    # for visualization purposes the image is inverted (not necessary)
     image = cv2.bitwise_not(image)
 
     shape_1 = image.shape[1]
-    # blur = 10
-    # low_thres_edges = 0.1
-    # high_thres_edges = 2.5
-    # angle_res = np.pi / 180
-    # line_thres = 1
     min_len_lines = shape_1 * min_len_lines
     max_line_gap = shape_1 * max_line_gap
 
+    # finding the edges via the canny function and the lines with the hough lines function
     edges = img_as_ubyte(canny(image, sigma=blur, low_threshold=low_thres_edges, high_threshold=high_thres_edges))
     lines = cv2.HoughLinesP(edges, 1, angle_res, threshold=line_thres, minLineLength=min_len_lines,
                             maxLineGap=max_line_gap)
+
     if lines is not None:
         print("{} lines detected.".format(len(lines)))
-        x_lines = (lines.T[2] / 2 + lines.T[0] / 2).T.reshape((len(lines),))  # the middle points of the line
+        # here we extract the middle points of the lines
+        x_lines = (lines.T[2] / 2 + lines.T[0] / 2).T.reshape((len(lines),))
         y_lines = (lines.T[3] / 2 + lines.T[1] / 2).T.reshape((len(lines),))
         return x_lines, y_lines, lines, edges
     else:
@@ -551,14 +627,19 @@ def calculate_angles(lines):
 
     if lines is None:
         return None
+
     angle_lines = np.zeros(lines.shape[0])
+
     for i in range(lines.shape[0]):
         if lines[i][0][2] != lines[i][0][0]:
             angle_lines[i] = np.arctan((lines[i][0][3] - lines[i][0][1]) / (lines[i][0][2] - lines[i][0][0]))
+
             if angle_lines[i] < 0:
                 angle_lines[i] = angle_lines[i] + np.pi
+
         else:
             angle_lines[i] = np.pi / 2
+
     return angle_lines
 
 
@@ -599,30 +680,42 @@ def combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines, mid_milli
     # in which region you leave the lines exist : mid_mil_site +- x_constraint
     y_constraint = img_shape[0] * y_width_constraint / 2
     # in which region you leave the lines exist: y_const < y < y_shape - y_const
-    # angle_constraint = np.pi / 7  # exclude lines with angles < angle_constraint and > np.pi-angle_constraint
     max_dist_for_merge = img_shape[0] * max_dist  # the max distance lines can have for merging
-    # max_diff_angle = np.pi / 12  # the max angle difference lines can have for merging
 
     print("mid_milling_site = {}".format(mid_milling_site))
     print("lower x boundary = {}".format(mid_milling_site - x_constraint))
     print("upper x boundary = {}".format(mid_milling_site + x_constraint))
 
+    # for each line there exists a spot on num_lines_present, if set to 0 it is discarded
     num_lines_present = np.ones(lines.shape[0])
     for i in range(lines.shape[0]):
         x1 = x_lines[i]
         y1 = y_lines[i]
+
+        # for each line, apply the constraints and if it does not pass, discard it
         if (angle_lines[i] <= angle_constraint) | (angle_lines[i] >= (np.pi - angle_constraint)) | \
                 (x1 < (mid_milling_site - x_constraint)) | \
                 (x1 > (mid_milling_site + x_constraint)) | \
                 (y1 > (img_shape[0] / 2 + y_constraint)) | (y1 < (img_shape[0] / 2 - y_constraint)):
             num_lines_present[i] = 0
+
         else:
+            # If passed, look at all the other lines (that are still present) and calculate the distance between them
+            # and the difference in angle. If two lines are suited for merging, they are merged and put together at
+            # one spot in num_lines_present.
             for j in range(lines.shape[0]):
                 if (i != j) & (num_lines_present[i] >= 1) & (num_lines_present[j] >= 1):
+                    # calculating the distance and angle difference
                     dist = np.sqrt((x_lines[i] - x_lines[j]) ** 2 + (y_lines[i] - y_lines[j]) ** 2)
                     diff_angle = np.abs(angle_lines[i] - angle_lines[j])
+
+                    # checking merging conditions
                     if (dist <= max_dist_for_merge) & (diff_angle <= max_diff_angle):
+                        # put the lines together at the smallest index
                         if i < j:
+                            # Calculating the average end points, middle points and angles of the two weighted lines
+                            # and put it directly in the lines array. With weighted I mean how many lines are already
+                            # put at the two spots which we will merge.
                             lines[i][0][0] = (lines[i][0][0] * num_lines_present[i] + lines[j][0][0] *
                                               num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
                             lines[i][0][1] = (lines[i][0][1] * num_lines_present[i] + lines[j][0][1] *
@@ -638,9 +731,13 @@ def combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines, mid_milli
                                 j]) / (num_lines_present[i] + num_lines_present[j])
                             y_lines[i] = (y_lines[i] * num_lines_present[i] + y_lines[j] * num_lines_present[
                                 j]) / (num_lines_present[i] + num_lines_present[j])
+
                             num_lines_present[i] = num_lines_present[i] + num_lines_present[j]
                             num_lines_present[j] = 0
                         else:
+                            # Calculating the average end points, middle points and angles of the weighted lines and
+                            # put it directly in the lines array. With weighted I mean how many lines are already
+                            # put at the two spots which we will merge.
                             lines[j][0][0] = (lines[i][0][0] * num_lines_present[i] + lines[j][0][0] *
                                               num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
                             lines[j][0][1] = (lines[i][0][1] * num_lines_present[i] + lines[j][0][1] *
@@ -659,6 +756,7 @@ def combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines, mid_milli
                             num_lines_present[j] = num_lines_present[i] + num_lines_present[j]
                             num_lines_present[i] = 0
 
+    # here select for the lines that are left after combining
     lines = lines[num_lines_present > 0]
     x_lines = x_lines[num_lines_present > 0]
     y_lines = y_lines[num_lines_present > 0]
@@ -684,7 +782,6 @@ def group_single_lines(x_lines, y_lines, lines, angle_lines, max_distance, max_a
     Returns:
         groups (list):                  A list with all the groups created. Each group has the index values of the
                                         lines in that group. So lines[groups[0]] gives you the lines of the first group.
-
     """
 
     if lines is None:
