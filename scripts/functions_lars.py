@@ -43,7 +43,7 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
     if data[0].shape[0] == 1:  # if it is 1, there are multiple slices
         num_z = len(data[which_channel][0][0])
         print("#z-slices: {}".format(num_z))
-        dat = data[which_channel][0][0]  # to convert the data to a [num_slices, N, M] shape
+        dat = deepcopy(data[which_channel][0][0])  # to convert the data to a [num_slices, N, M] shape
         sharp = np.zeros(dat.shape[0])
 
         # to calculate the outlier threshold and apply it
@@ -86,7 +86,7 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
             img = gaussian_filter(img, sigma=1)  # blur)  # 20
             sobel_x = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=5)
             sobel_y = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=5)
-            grad = np.sqrt(sobel_x**2+sobel_y**2)
+            grad = np.sqrt(sobel_x ** 2 + sobel_y ** 2)
             sharp[i] = np.var(grad)
 
         in_focus = np.where(sharp == np.max(sharp))[0][0]
@@ -103,6 +103,8 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
             minmax[1] = dat.shape[0]
 
         print(f"In focus slice is: {in_focus}.")
+        print(f"first slice: {minmax[0]}")
+        print(f"last slice: {minmax[1]}")
         # the z-projection
         if mode == 'max':
             img = np.max(dat[minmax[0]:minmax[1]], axis=0)
@@ -207,7 +209,7 @@ def rescaling(img_before, img_after):
     Returns:
         img_before (ndarray):   If it was the smaller image, the rescaled image, otherwise the same as the input image.
         img_after (ndarray):    If it was the smaller image, the rescaled image, otherwise the same as the input image.
-        scaling_factor (float): The ratio between the two image sizes.
+        scaling_factor (float): The ratio between the two image sizes: img_before/img_after.
     """
 
     if img_before.shape == img_after.shape:
@@ -216,51 +218,63 @@ def rescaling(img_before, img_after):
     if img_after.shape > img_before.shape:
         print("image shapes are not equal.")
         img_rescaled = np.zeros(img_after.shape)
+        img_rescaled2 = np.zeros(img_after.shape)
         d_pix = img_before.shape[0] / img_after.shape[0]  # here we assume that the difference in x is the same
         # as in y as pixels are squares
 
         # interpolate for the y values of the image
         for i in range(img_before.shape[0]):
-            x_vals = np.arange(0, len(img_before[i, :]), 1)
-            y_vals = img_before[i, :]
-            x_new = np.arange(0, len(img_before[i, :]), d_pix)
-            y_new = np.interp(x_new, x_vals, y_vals)
-            img_rescaled[i, :] = y_new
+            img_rescaled[2 * i, :img_before.shape[1]] = img_before[i, :]
+            img_rescaled[2 * i + 1, :img_before.shape[1]] = img_before[i, :]
+
+            # x_vals = np.arange(0, len(img_before[i, :]), 1)
+            # y_vals = img_before[i, :]
+            # x_new = np.arange(0, len(img_before[i, :]), d_pix)
+            # y_new = np.interp(x_new, x_vals, y_vals)
+            # img_rescaled[i, :] = y_new
 
         # interpolate for the x values of the image
-        for i in range(img_rescaled.shape[1]):
-            y_vals = np.arange(0, len(img_before[:, 0]), 1)
-            x_vals = img_rescaled[:img_before.shape[0], i]
-            y_new = np.arange(0, len(img_before[:, 0]), d_pix)
-            x_new = np.interp(y_new, y_vals, x_vals)
-            img_rescaled[:, i] = x_new
+        for i in range(img_before.shape[1]):
+            img_rescaled2[:, 2 * i] = img_rescaled[:, i]
+            img_rescaled2[:, 2 * i + 1] = img_rescaled[:, i]
+        # y_vals = np.arange(0, len(img_before[:, 0]), 1)
+        # x_vals = img_rescaled[:img_before.shape[0], i]
+        # y_new = np.arange(0, len(img_before[:, 0]), d_pix)
+        # x_new = np.interp(y_new, y_vals, x_vals)
+        # img_rescaled[:, i] = x_new
 
         # img_before = img_rescaled
-        return img_rescaled, img_after, img_before.shape[0] / img_after.shape[0]
+        return img_rescaled2, img_after, img_before.shape[0] / img_after.shape[0]
 
     else:  # copied the code but then for the images swapped, not really necessary (anymore now it is a function)
         img_rescaled = np.zeros(img_before.shape)
+        img_rescaled2 = np.zeros(img_after.shape)
+
         d_pix = img_after.shape[0] / img_before.shape[0]  # here we assume that the difference in x is the same
         # as in y as pixels are squares
 
         # interpolate for the y values of the image
         for i in range(img_after.shape[0]):
-            x_vals = np.arange(0, len(img_after[i, :]), 1)
-            y_vals = img_after[i, :]
-            x_new = np.arange(0, len(img_after[i, :]), d_pix)
-            y_new = np.interp(x_new, x_vals, y_vals)
-            img_rescaled[i, :] = y_new
+            img_rescaled[2 * i, :img_after.shape[1]] = img_after[i, :]
+            img_rescaled[2 * i + 1, :img_after.shape[1]] = img_after[i, :]
+            # x_vals = np.arange(0, len(img_after[i, :]), 1)
+            # y_vals = img_after[i, :]
+            # x_new = np.arange(0, len(img_after[i, :]), d_pix)
+            # y_new = np.interp(x_new, x_vals, y_vals)
+            # img_rescaled[i, :] = y_new
 
         # interpolate for the x values of the image
-        for i in range(img_rescaled.shape[1]):
-            y_vals = np.arange(0, len(img_after[:, 0]), 1)
-            x_vals = img_rescaled[:img_after.shape[0], i]
-            y_new = np.arange(0, len(img_after[:, 0]), d_pix)
-            x_new = np.interp(y_new, y_vals, x_vals)
-            img_rescaled[:, i] = x_new
+        for i in range(img_after.shape[1]):
+            img_rescaled2[:, 2 * i] = img_rescaled[:, i]
+            img_rescaled2[:, 2 * i + 1] = img_rescaled[:, i]
+            # y_vals = np.arange(0, len(img_after[:, 0]), 1)
+            # x_vals = img_rescaled[:img_after.shape[0], i]
+            # y_new = np.arange(0, len(img_after[:, 0]), d_pix)
+            # x_new = np.interp(y_new, y_vals, x_vals)
+            # img_rescaled[:, i] = x_new
 
         # img_after = img_rescaled
-        return img_before, img_rescaled, img_before.shape[0] / img_after.shape[0]
+        return img_before, img_rescaled2, img_before.shape[0] / img_after.shape[0]
 
 
 def overlay(img_before, img_after, max_shift=5):
@@ -395,6 +409,8 @@ def get_image(data_paths_before, data_paths_after, channel_before, channel_after
         # finding the estimates for the milling site position
         milling_x_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x')
         milling_y_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='y')
+        print(f"milling pos y = {milling_y_pos}")
+        print(f"milling pos x = {milling_x_pos}")
 
         # finding the in focus slice.
         # because the raw data is not yet scaled properly, the position needs to be adjusted for that
@@ -411,11 +427,12 @@ def get_image(data_paths_before, data_paths_after, channel_before, channel_after
                                                               (milling_x_pos - shift[1]) / magni, channel_after,
                                                               num_slices=max_slices_focus)
         elif magni < 1:
-            img_before = find_focus_z_slice_and_outlier_cutoff(data_before_milling, (milling_y_pos - shift[0]) * magni,
-                                                               (milling_x_pos - shift[1]) * magni, channel_before,
+            img_before = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos * magni,
+                                                               milling_x_pos * magni, channel_before,
                                                                num_slices=max_slices_focus)
-            img_after = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos, milling_x_pos,
-                                                              channel_after, num_slices=max_slices_focus)
+            img_after = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos - shift[0],
+                                                              milling_x_pos - shift[1], channel_after,
+                                                              num_slices=max_slices_focus)
     elif mode == 'projection':
         # reading the data and just make a z-projection
         data_before_milling = tiff.read_data(data_paths_before)
