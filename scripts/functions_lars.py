@@ -37,13 +37,14 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
 
         Returns:
             img (ndarray):      The max or mean projected #num_slices slices around the in focus slice.
+            in_focus (int):     The in focus slice number.
 
     """
 
     if data[0].shape[0] == 1:  # if it is 1, there are multiple slices
         num_z = len(data[which_channel][0][0])
         print("#z-slices: {}".format(num_z))
-        dat = deepcopy(data[which_channel][0][0])  # to convert the data to a [num_slices, N, M] shape
+        dat = np.array(data[which_channel][0][0])  # to convert the data to a [num_slices, N, M] shape
         sharp = np.zeros(dat.shape[0])
 
         # to calculate the outlier threshold and apply it
@@ -116,6 +117,7 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
             img = np.max(dat[minmax[0]:minmax[1]], axis=0)
     else:  # if data[0].shape[0] != 1, there is only one slice
         print("#z-slices: 1")
+        in_focus = 0
         img = np.array(data[which_channel], dtype=int)
         del data
 
@@ -127,7 +129,7 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
         thr_out = bins[plc] / 2 + bins[plc + 1] / 2
         img[img > thr_out] = thr_out
 
-    return np.array(img, dtype=int)
+    return np.array(img, dtype=int), in_focus
 
 
 def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, outlier_cutoff=99, mode='max'):
@@ -215,66 +217,138 @@ def rescaling(img_before, img_after):
     if img_before.shape == img_after.shape:
         return img_before, img_after, 1
 
-    if img_after.shape > img_before.shape:
-        print("image shapes are not equal.")
+    magni = img_before.shape[0] / img_after.shape[0]
+    magni_x = img_before.shape[1] / img_after.shape[1]
+
+    if magni != magni_x:
+        raise ValueError("Image shapes cannot be rescaled to one another. Distortion of the images would take place.")
+
+    if magni < 1:
+        magni = 1/magni
         img_rescaled = np.zeros(img_after.shape)
         img_rescaled2 = np.zeros(img_after.shape)
-        d_pix = img_before.shape[0] / img_after.shape[0]  # here we assume that the difference in x is the same
-        # as in y as pixels are squares
+        img_to_be_scaled = deepcopy(img_before)
 
-        # interpolate for the y values of the image
-        for i in range(img_before.shape[0]):
-            img_rescaled[2 * i, :img_before.shape[1]] = img_before[i, :]
-            img_rescaled[2 * i + 1, :img_before.shape[1]] = img_before[i, :]
-
-            # x_vals = np.arange(0, len(img_before[i, :]), 1)
-            # y_vals = img_before[i, :]
-            # x_new = np.arange(0, len(img_before[i, :]), d_pix)
-            # y_new = np.interp(x_new, x_vals, y_vals)
-            # img_rescaled[i, :] = y_new
-
-        # interpolate for the x values of the image
-        for i in range(img_before.shape[1]):
-            img_rescaled2[:, 2 * i] = img_rescaled[:, i]
-            img_rescaled2[:, 2 * i + 1] = img_rescaled[:, i]
-        # y_vals = np.arange(0, len(img_before[:, 0]), 1)
-        # x_vals = img_rescaled[:img_before.shape[0], i]
-        # y_new = np.arange(0, len(img_before[:, 0]), d_pix)
-        # x_new = np.interp(y_new, y_vals, x_vals)
-        # img_rescaled[:, i] = x_new
-
-        # img_before = img_rescaled
-        return img_rescaled2, img_after, img_before.shape[0] / img_after.shape[0]
-
-    else:  # copied the code but then for the images swapped, not really necessary (anymore now it is a function)
+    else:
         img_rescaled = np.zeros(img_before.shape)
-        img_rescaled2 = np.zeros(img_after.shape)
+        img_rescaled2 = np.zeros(img_before.shape)
+        img_to_be_scaled = deepcopy(img_after)
 
-        d_pix = img_after.shape[0] / img_before.shape[0]  # here we assume that the difference in x is the same
-        # as in y as pixels are squares
+    if magni % 1 == 0:
+        for i in range(img_to_be_scaled.shape[0]):
+            for j in range(int(magni)):
+                img_rescaled[int(magni*i+j), :img_to_be_scaled.shape[1]] = img_to_be_scaled[i, :]
 
-        # interpolate for the y values of the image
-        for i in range(img_after.shape[0]):
-            img_rescaled[2 * i, :img_after.shape[1]] = img_after[i, :]
-            img_rescaled[2 * i + 1, :img_after.shape[1]] = img_after[i, :]
-            # x_vals = np.arange(0, len(img_after[i, :]), 1)
-            # y_vals = img_after[i, :]
-            # x_new = np.arange(0, len(img_after[i, :]), d_pix)
-            # y_new = np.interp(x_new, x_vals, y_vals)
-            # img_rescaled[i, :] = y_new
+        for i in range(img_to_be_scaled.shape[1]):
+            for j in range(int(magni)):
+                img_rescaled2[:, int(magni*i+j)] = img_rescaled[:, i]
 
-        # interpolate for the x values of the image
-        for i in range(img_after.shape[1]):
-            img_rescaled2[:, 2 * i] = img_rescaled[:, i]
-            img_rescaled2[:, 2 * i + 1] = img_rescaled[:, i]
-            # y_vals = np.arange(0, len(img_after[:, 0]), 1)
-            # x_vals = img_rescaled[:img_after.shape[0], i]
-            # y_new = np.arange(0, len(img_after[:, 0]), d_pix)
-            # x_new = np.interp(y_new, y_vals, x_vals)
-            # img_rescaled[:, i] = x_new
+        if magni_x < 1:
+            return img_rescaled2, img_after, magni_x
+        else:
+            return img_before, img_rescaled2, magni_x
 
-        # img_after = img_rescaled
-        return img_before, img_rescaled2, img_before.shape[0] / img_after.shape[0]
+    else:
+        if magni_x < 1:
+            img_to_be_scaled_too = np.array(img_after)
+        else:
+            img_to_be_scaled_too = np.array(img_before)
+
+        extra_mag = np.arange(1, 10)
+        possible = extra_mag*magni
+        it = np.where(possible % 1 == 0)[0]
+
+        if len(it) == 0:
+            raise ValueError("Images are too difficult to rescale to one another, interpolation must be used "
+                             "(which is not implemented).")
+
+        extra_mag = extra_mag[np.min(it)]
+        first_rescaled = np.zeros((int(extra_mag*img_rescaled.shape[0]), int(extra_mag*img_rescaled.shape[1])))
+        first_rescaled2 = np.zeros(first_rescaled.shape)
+        second_rescaled = np.zeros(first_rescaled.shape)
+        second_rescaled2 = np.zeros(first_rescaled.shape)
+
+        for i in range(img_rescaled.shape[0]):
+            for j in range(int(extra_mag)):
+                first_rescaled[int(extra_mag*i+j), :img_rescaled.shape[1]] = img_to_be_scaled_too[i, :]
+
+        for i in range(img_rescaled.shape[1]):
+            for j in range(int(extra_mag)):
+                first_rescaled2[:, int(extra_mag*i+j)] = first_rescaled[:, i]
+
+        for i in range(img_to_be_scaled.shape[0]):
+            for j in range(int(magni*extra_mag)):
+                second_rescaled[int(magni*extra_mag*i+j), :img_to_be_scaled.shape[1]] = img_to_be_scaled[i, :]
+
+        for i in range(img_to_be_scaled.shape[1]):
+            for j in range(int(magni*extra_mag)):
+                second_rescaled2[:, int(magni*extra_mag*i+j)] = second_rescaled[:, i]
+
+        if magni_x < 1:
+            return second_rescaled2, first_rescaled2, magni_x
+        else:
+            return first_rescaled2, second_rescaled2, magni_x
+
+    # if img_after.shape > img_before.shape:
+    #     print("image shapes are not equal.")
+    #     img_rescaled = np.zeros(img_after.shape)
+    #     img_rescaled2 = np.zeros(img_after.shape)
+    #     d_pix = img_before.shape[0] / img_after.shape[0]  # here we assume that the difference in x is the same
+    #     # as in y as pixels are squares
+    #
+    #     # interpolate for the y values of the image
+    #     for i in range(img_before.shape[0]):
+    #         img_rescaled[2 * i, :img_before.shape[1]] = img_before[i, :]
+    #         img_rescaled[2 * i + 1, :img_before.shape[1]] = img_before[i, :]
+    #
+    #         # x_vals = np.arange(0, len(img_before[i, :]), 1)
+    #         # y_vals = img_before[i, :]
+    #         # x_new = np.arange(0, len(img_before[i, :]), d_pix)
+    #         # y_new = np.interp(x_new, x_vals, y_vals)
+    #         # img_rescaled[i, :] = y_new
+    #
+    #     # interpolate for the x values of the image
+    #     for i in range(img_before.shape[1]):
+    #         img_rescaled2[:, 2 * i] = img_rescaled[:, i]
+    #         img_rescaled2[:, 2 * i + 1] = img_rescaled[:, i]
+    #     # y_vals = np.arange(0, len(img_before[:, 0]), 1)
+    #     # x_vals = img_rescaled[:img_before.shape[0], i]
+    #     # y_new = np.arange(0, len(img_before[:, 0]), d_pix)
+    #     # x_new = np.interp(y_new, y_vals, x_vals)
+    #     # img_rescaled[:, i] = x_new
+    #
+    #     # img_before = img_rescaled
+    #     return img_rescaled2, img_after, img_before.shape[0] / img_after.shape[0]
+    #
+    # else:  # copied the code but then for the images swapped, not really necessary (anymore now it is a function)
+    #     img_rescaled = np.zeros(img_before.shape)
+    #     img_rescaled2 = np.zeros(img_after.shape)
+    #
+    #     d_pix = img_after.shape[0] / img_before.shape[0]  # here we assume that the difference in x is the same
+    #     # as in y as pixels are squares
+    #
+    #     # interpolate for the y values of the image
+    #     for i in range(img_after.shape[0]):
+    #         img_rescaled[2 * i, :img_after.shape[1]] = img_after[i, :]
+    #         img_rescaled[2 * i + 1, :img_after.shape[1]] = img_after[i, :]
+    #         # x_vals = np.arange(0, len(img_after[i, :]), 1)
+    #         # y_vals = img_after[i, :]
+    #         # x_new = np.arange(0, len(img_after[i, :]), d_pix)
+    #         # y_new = np.interp(x_new, x_vals, y_vals)
+    #         # img_rescaled[i, :] = y_new
+    #
+    #     # interpolate for the x values of the image
+    #     for i in range(img_after.shape[1]):
+    #         img_rescaled2[:, 2 * i] = img_rescaled[:, i]
+    #         img_rescaled2[:, 2 * i + 1] = img_rescaled[:, i]
+    #         # y_vals = np.arange(0, len(img_after[:, 0]), 1)
+    #         # x_vals = img_rescaled[:img_after.shape[0], i]
+    #         # y_new = np.arange(0, len(img_after[:, 0]), d_pix)
+    #         # x_new = np.interp(y_new, y_vals, x_vals)
+    #         # img_rescaled[:, i] = x_new
+    #
+    #     # img_after = img_rescaled
+    #     return img_before, img_rescaled2, img_before.shape[0] / img_after.shape[0]
 
 
 def overlay(img_before, img_after, max_shift=5):
@@ -294,6 +368,7 @@ def overlay(img_before, img_after, max_shift=5):
     Returns:
         img_after (ndarray):    The shifted image, the values outside the boundaries of the image are set to the max
                                 value of the image so that in further processing steps those regions are not used.
+        shift (ndarray):        The shift values in dy, dx
     """
 
     # max shift is between 1 and inf, the higher, the higher the shift can be
@@ -301,7 +376,7 @@ def overlay(img_before, img_after, max_shift=5):
     mean_after = np.mean(img_after)
     img_before = img_before - np.mean(img_before)
     img_after = img_after - mean_after
-    conv = fftconvolve(img_before, img_after[::-1, ::-1], mode='same')
+    conv = fftconvolve(img_before, img_after[::-1, ::-1])
 
     # max_shift constraints
     if (int(conv.shape[0] / max_shift) > 0) & (max_shift > 1):
@@ -313,8 +388,8 @@ def overlay(img_before, img_after, max_shift=5):
     # calculating the shift in y and x with finding the maximum in the convolution
     shift = np.where(conv == np.max(conv))
     shift = np.asarray(shift)
-    shift[0] = shift[0] - img_after.shape[0] / 2
-    shift[1] = shift[1] - img_after.shape[1] / 2
+    shift[0] = shift[0] - (conv.shape[0]-1) / 2
+    shift[1] = shift[1] - (conv.shape[1]-1) / 2
 
     img_after = img_after + mean_after
 
