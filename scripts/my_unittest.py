@@ -1,9 +1,12 @@
 import unittest
 import gc
 import numpy as np
+from scipy.ndimage import gaussian_filter
+import matplotlib.pyplot as plt
 from odemis.dataio import tiff
 from scripts.functions_lars import find_focus_z_slice_and_outlier_cutoff, rescaling, overlay, \
-    z_projection_and_outlier_cutoff
+    z_projection_and_outlier_cutoff, blur_and_norm, create_diff_mask, find_x_or_y_pos_milling_site, calculate_angles, \
+    create_line_mask
 from try_out_lars import data_paths_before, data_paths_after, data_paths_true_masks
 from copy import deepcopy
 
@@ -51,8 +54,7 @@ class TestMyClass(unittest.TestCase):
     #     self.assertEqual(expected, result)
 
     def test_focus_z_slice(self):
-        for i in range(int(len(data_paths_after) / 3)):
-            i = 2*i
+        for i in np.array([0, 5, 12]):
             data = tiff.read_data(data_paths_before[i])
 
             if self.correct_scaling[i] >= 1:
@@ -80,23 +82,33 @@ class TestMyClass(unittest.TestCase):
             gc.collect()
 
     def test_z_projection(self):
-        for i in range(int(len(data_paths_after) / 3)):
-            i = 2*i
+        for i in np.array([0, 5, 12]):
             data = tiff.read_data(data_paths_before[i])
 
-            img = z_projection_and_outlier_cutoff(data, 30, which_channel=self.channel_before[i], outlier_cutoff=99, mode='max')
+            img = z_projection_and_outlier_cutoff(data, 30, which_channel=self.channel_before[i], outlier_cutoff=99,
+                                                  mode='max')
 
-            s = int((len(data[self.channel_before[i]][0][0]) - 30) / 2)
-            img_correct = np.array(data[self.channel_before[i]][0][0][s:-s], dtype=int)
+            if data[0].shape[0] == 1:
+                s = int((len(data[self.channel_before[i]][0][0]) - 30) / 2)
+                img_correct = np.array(data[self.channel_before[i]][0][0][s:-s], dtype=int)
+                histo, bins = np.histogram(img_correct, bins=2000)
+                histo = np.cumsum(histo)
+                histo = histo / histo[-1] * 100
+                plc = np.min(np.where(histo > 99))
+                thr_out = bins[plc] / 2 + bins[plc + 1] / 2
+                img_correct[img_correct > thr_out] = thr_out
 
-            histo, bins = np.histogram(img_correct, bins=2000)
-            histo = np.cumsum(histo)
-            histo = histo / histo[-1] * 100
-            plc = np.min(np.where(histo > 99))
-            thr_out = bins[plc] / 2 + bins[plc + 1] / 2
-            img_correct[img_correct > thr_out] = thr_out
+                img_correct = np.max(img_correct, axis=0)
 
-            img_correct = np.max(img_correct, axis=0)
+            else:
+                img_correct = np.array(data[self.channel_before[i]], dtype=int)
+                histo, bins = np.histogram(img_correct, bins=2000)
+                histo = np.cumsum(histo)
+                histo = histo / histo[-1] * 100
+                plc = np.min(np.where(histo > 99))
+                thr_out = bins[plc] / 2 + bins[plc + 1] / 2
+                img_correct[img_correct > thr_out] = thr_out
+
             self.assertTrue(np.array_equal(img, img_correct))
             # use np.testing.assert_almost_equal()
 
@@ -253,6 +265,172 @@ class TestMyClass(unittest.TestCase):
             correct_shift = np.array([[50-int(i*10)], [0]])
 
             self.assertTrue(np.array_equal(shift, correct_shift))
+
+    def test_get_image(self):
+        pass
+
+    def test_blur_and_norm(self):
+        img = np.zeros((100, 100))
+        img[49, 49] = 1
+
+        result, result_blurred = blur_and_norm(img, 1)
+
+        correct = img
+        correct_blurred = gaussian_filter(img, 1)
+        correct_blurred = correct_blurred/np.max(correct_blurred)
+
+        self.assertTrue(np.array_equal(result, correct))
+        self.assertTrue(np.array_equal(result_blurred, correct_blurred))
+
+        img = np.ones((100, 100))
+        img[49, 49] = 2
+
+        result, result_blurred = blur_and_norm(img, 5)
+
+        correct = np.zeros((100, 100))
+        correct[49, 49] = 1
+        correct_blurred = gaussian_filter(img, 5) - 1
+        correct_blurred = correct_blurred / np.max(correct_blurred)
+
+        self.assertTrue(np.array_equal(result, correct))
+        self.assertTrue(np.array_equal(result_blurred, correct_blurred))
+
+    def test_create_diff_mask(self):
+        n = 100
+        img1 = np.ones((n, n))
+        img2 = np.ones((n, n))
+
+        img1[39:59, 39:59] = 2
+
+        result = create_diff_mask(img1, img2, open_iter=2)
+        correct = np.zeros((n, n), dtype=bool)
+        correct[39:59, 39:59] = True
+
+        self.assertTrue(np.array_equal(result, correct))
+
+        result = create_diff_mask(img1, img2, open_iter=10)
+        correct[39:59, 39:59] = False
+        self.assertTrue(np.array_equal(result, correct))
+
+        result = create_diff_mask(img1, img2, threshold_mask=0.6, open_iter=2)
+        self.assertTrue(np.array_equal(result, correct))
+
+        correct[41:57, 41:57] = True
+        result = create_diff_mask(img1, img2, open_iter=2, ero_iter=2)
+        self.assertTrue(np.array_equal(result, correct))
+
+        img1[33:37, 33:37] = 2
+        img1[20:25, 40:45] = 2
+        img1[65:69, 51:55] = 2
+        img1[40:45, 80:85] = 2
+        result = create_diff_mask(img1, img2, open_iter=0, squaring=True, max_square=1)
+        correct = np.zeros((n, n), dtype=bool)
+        correct[20:69, 33:85] = True
+
+        self.assertTrue(np.array_equal(result, correct))
+
+        result = create_diff_mask(img1, img2, open_iter=0, squaring=True, max_square=1/4)
+        correct = np.array(img1 > 1)
+
+        self.assertTrue(np.array_equal(result, correct))
+
+        result = create_diff_mask(img1, img2, open_iter=3, squaring=True, max_square=1)
+        correct = np.zeros((n, n), dtype=bool)
+        correct[39:59, 39:59] = True
+
+        self.assertTrue(np.array_equal(result, correct))
+
+    def test_find_xy_pos(self):
+        n = 100
+        img1 = np.ones((n, n))
+        img2 = np.ones((n, n))
+
+        img1[39, 59] = 2
+
+        result = find_x_or_y_pos_milling_site(img1, img2, ax='x')
+        correct = 59
+        self.assertEqual(result, correct)
+
+        result = find_x_or_y_pos_milling_site(img1, img2, ax='y')
+        correct = 39
+        self.assertEqual(result, correct)
+
+        img1[30:51, 50:71] = 5
+        img1 = gaussian_filter(img1, 5)
+
+        result = find_x_or_y_pos_milling_site(img1, img2, ax='x')
+        correct = 60
+        self.assertEqual(result, correct)
+
+        result = find_x_or_y_pos_milling_site(img1, img2, ax='y')
+        correct = 40
+        self.assertEqual(result, correct)
+
+        img1[:, :5] = 10
+        img1[:5, :] = 10
+        img1[:, -5:] = 10
+        img1[-5:, :] = 10
+
+        result = find_x_or_y_pos_milling_site(img1, img2, ax='x')
+        correct = 60
+        self.assertEqual(result, correct)
+
+        result = find_x_or_y_pos_milling_site(img1, img2, ax='y')
+        correct = 40
+        self.assertEqual(result, correct)
+
+    def test_find_lines(self):
+        pass
+
+    def test_calculate_angles(self):
+        lines = np.zeros((6, 1, 4))
+        lines[0, 0, :] = np.array([0, 0, 1, 1])
+        lines[1, 0, :] = np.array([0, 0, 0, 1])
+        lines[2, 0, :] = np.array([0, 0, -1, 1])
+        lines[3, 0, :] = np.array([0, 0, -1, -1])
+        lines[4, 0, :] = np.array([0, 0, 1, -1])
+        lines[5, 0, :] = np.array([0, 0, 1, 0])
+
+        result = calculate_angles(lines)
+
+        correct = np.array([np.pi/4, np.pi/2, np.pi*3/4, np.pi/4, np.pi*3/4, 0])
+
+        self.assertTrue(np.array_equal(result, correct))
+
+    def test_combine_and_constraint_lines(self):
+        pass
+
+    def test_group_single_lines(self):
+        pass
+
+    def test_couple_groups_of_lines(self):
+        pass
+
+    def test_create_line_mask(self):
+        n = 6
+        after_grouping = np.arange(n, dtype=int)
+        x_lines2 = np.array([15, 35, 55, 25, 45, 65])
+        y_lines2 = np.array([15, 35, 55, 15, 35, 55])
+        lines2 = np.zeros((n, 1, 4), dtype=int)
+        lines2[0, 0, :] = np.array([10, 10, 20, 20])
+        lines2[1, 0, :] = np.array([30, 30, 40, 40])
+        lines2[2, 0, :] = np.array([50, 50, 60, 60])
+        lines2[3, 0, :] = np.array([20, 10, 30, 20])
+        lines2[4, 0, :] = np.array([40, 30, 50, 40])
+        lines2[5, 0, :] = np.array([60, 50, 70, 60])
+        angle_lines2 = np.zeros(n) + np.pi/4
+
+        img = np.zeros((100, 100))
+        img_shape = img.shape
+
+        result = create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_shape)
+
+        correct = np.zeros((100, 100), dtype=bool)
+        for i in range(correct.shape[1]):
+            correct[i, i:i+11] = True
+
+        self.assertTrue(np.array_equal(result, correct))
+
 
 
 

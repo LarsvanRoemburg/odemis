@@ -116,7 +116,8 @@ if __name__ == '__main__':
         img_after, shift = overlay(img_before, img_after, max_shift=4)  # max_shift between 1 and inf
 
         # preprocessing steps of the images: blurring the image
-        img_before, img_after, img_before_blurred, img_after_blurred = blur_and_norm(img_before, img_after, blur=blur)
+        img_before, img_before_blurred = blur_and_norm(img_before, blur=blur)
+        img_after, img_after_blurred = blur_and_norm(img_after, blur=blur)
 
         # detecting two parallel lines
         # the max difference in this projection is where there is milled

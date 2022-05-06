@@ -479,7 +479,8 @@ def get_image(data_paths_before, data_paths_after, channel_before, channel_after
         # shift is [dy, dx]
 
         # blurring the images
-        img_before, img_after, img_before_blurred, img_after_blurred = blur_and_norm(img_before, img_after, blur=blur)
+        img_before, img_before_blurred = blur_and_norm(img_before, blur=blur)
+        img_after, img_after_blurred = blur_and_norm(img_after, blur=blur)
 
         # finding the estimates for the milling site position
         milling_x_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x')
@@ -527,49 +528,41 @@ def get_image(data_paths_before, data_paths_after, channel_before, channel_after
     return img_before, img_after, meta_before, meta_after
 
 
-def blur_and_norm(img_before, img_after, blur=25):
+def blur_and_norm(img, blur=25):
     """
     Because the images before and after milling have different intensity profiles and do not have the exact same noise,
-    normalization and blurring is required for being able to compare the two images. Here the two images are first
-    blurred with a Gaussian filter and afterwards normalized to a range from 0 to 1. The unblurred images are also
-    normalized with their own maximum and the minimum of the blurred images. The minimum of the blurred images are used
+    normalization and blurring is required for being able to compare the two images. Here the image is first
+    blurred with a Gaussian filter and afterwards normalized to a range from 0 to 1. The unblurred image is also
+    normalized with its own maximum and the minimum of the blurred images. The minimum of the blurred image is used
     because everything below this is probably noise.
 
     Parameters:
-        img_before (ndarray):   The image before milling to be blurred and normalized.
-        img_after (ndarray):    The image after milling to be blurred and normalized.
-        blur (int):             The sigma for the gaussian blurring, the higher the number, the more blurring occurs.
+        img (ndarray):              The image to be blurred and normalized.
+        blur (int):                 The sigma for the gaussian blurring, the higher the number, the more blurring occurs.
 
     Returns:
-        img_before (ndarray):           The unblurred, normalized image before milling.
-        img_after (ndarray):            The unblurred, normalized image after milling.
-        img_before_blurred (ndarray):   The blurred, normalized image before milling.
-        img_after_blurred (ndarray):    The blurred, normalized image after milling.
+        img (ndarray):              The unblurred, normalized image before milling.
+        img_blurred (ndarray):      The blurred, normalized image before milling.
     """
 
     # blurring the images
-    img_before_blurred = gaussian_filter(img_before, sigma=blur)
-    img_after_blurred = gaussian_filter(img_after, sigma=blur)
+    img_blurred = gaussian_filter(img, sigma=blur)
 
     # normalization of the blurred images to [0,1] interval
-    base_lvl_before = np.min(img_before_blurred)
-    base_lvl_after = np.min(img_after_blurred)
-    img_before_blurred = (img_before_blurred - base_lvl_before) / (np.max(img_before_blurred) - base_lvl_before)
-    img_after_blurred = (img_after_blurred - base_lvl_after) / (np.max(img_after_blurred) - base_lvl_after)
+    base_lvl_before = np.min(img_blurred)
+    img_blurred = (img_blurred - base_lvl_before) / (np.max(img_blurred) - base_lvl_before)
 
     # normalization of the initial images to [0,1] interval
     # you take base_lvl of the blurred images to be the minimum intensity value because lower intensity values are
     # probably due to noise.
-    img_before = (img_before - base_lvl_before) / (np.max(img_before) - base_lvl_before)
-    img_after = (img_after - base_lvl_after) / (np.max(img_after) - base_lvl_after)
-    img_before[img_before < 0] = 0
-    img_after[img_after < 0] = 0
+    img = (img - base_lvl_before) / (np.max(img) - base_lvl_before)
+    img[img < 0] = 0
 
-    return img_before, img_after, img_before_blurred, img_after_blurred
+    return img, img_blurred
 
 
 def create_diff_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, open_iter=12, ero_iter=0,
-                     squaring=False):
+                     squaring=False, max_square=1/3):
     """
     Here a mask is created with looking at the difference in intensities between the blurred images before and after
     milling. A threshold is set for the difference and a binary opening is performed to get rid of too small
@@ -582,6 +575,8 @@ def create_diff_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, 
         open_iter (int):                How many iterations of binary opening you want to perform.
         ero_iter (int):                 How many iterations of binary erosion you want to perform.
         squaring (bool):                If set to true, a square is taken around the mask becomes the mask itself.
+        max_square (float):             The maximum width the square can have, if it is above this width, it is not made
+                                        into a square. It is in the fraction of the image.
 
     Returns:
         mask (ndarray):                 The mask created in the form of a boolean numpy array.
@@ -594,11 +589,11 @@ def create_diff_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, 
 
     # binary opening of the mask
     if open_iter >= 1:
-        mask = binary_opening(mask, iterations=open_iter)
+        mask = binary_opening(mask, structure=np.ones((3, 3)), iterations=open_iter)
 
     # binary erosion of the mask
     if ero_iter >= 1:
-        mask = binary_erosion(mask, iterations=ero_iter)
+        mask = binary_erosion(mask, structure=np.ones((3, 3)), iterations=ero_iter)
 
     index_mask = np.where(mask)
 
@@ -611,8 +606,8 @@ def create_diff_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, 
 
         # if the square is too big, it will not be squared because it indicates that something went wrong
         # with the masking (a milling site is not so big).
-        if x_max - x_min < mask.shape[1] / 3:
-            mask[y_min:y_max, x_min:x_max] = True
+        if x_max - x_min < mask.shape[1] * max_square:
+            mask[y_min:y_max+1, x_min:x_max+1] = True
 
     return mask
 
@@ -711,7 +706,9 @@ def calculate_angles(lines):
     Here the angles of the lines are calculated with a simple arctan. It will have the range of 0 to pi.
 
     Parameters:
-        lines (ndarray):        The end positions of the lines as outputted from find_lines.
+        lines (ndarray):        The end positions of the lines as outputted from find_lines,
+                                in the format (#lines, 1, 4) with for the last part:
+                                (0: x of end 1, 1: y of end 1, 2: x of end 2, 3: y of end 2).
 
     Returns:
         angle_lines (ndarray):  The angles of the lines in a single 1D-array.
@@ -1186,20 +1183,20 @@ def create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, i
         y_right_mean = np.mean(y_lines3[groups2[1]])
         angle_right_mean = np.mean(angle_lines3[groups2[1]])
 
-        x_grid = np.arange(0, img_shape[1], 1)
-        y_grid = np.arange(0, img_shape[0], 1)
+        x_grid = np.arange(0, img_shape[1], 1, dtype=int)
+        y_grid = np.arange(0, img_shape[0], 1, dtype=int)
 
         # here the mask is created as a boolean array
         mask_lines = np.zeros(img_shape, dtype=bool)
         for y in y_grid:
-            x_line_left = (y - y_left_mean) / np.tan(angle_left_mean) + x_left_mean
-            x_line_right = (y - y_right_mean) / np.tan(angle_right_mean) + x_right_mean
-            x_line_left = np.ones(mask_lines.shape[1]) * x_line_left
-            x_line_right = np.ones(mask_lines.shape[1]) * x_line_right
+            x_line_left = int((y - y_left_mean) / np.tan(angle_left_mean) + x_left_mean)
+            x_line_right = int((y - y_right_mean) / np.tan(angle_right_mean) + x_right_mean)
+            x_line_left = np.ones(mask_lines.shape[1], dtype=int) * x_line_left
+            x_line_right = np.ones(mask_lines.shape[1], dtype=int) * x_line_right
             if x_line_left[0] < x_line_right[0]:
-                mask_lines[y, :] = (x_line_left < x_grid) & (x_grid < x_line_right)
+                mask_lines[y, :] = (x_line_left <= x_grid) & (x_grid <= x_line_right)
             else:
-                mask_lines[y, :] = (x_line_right < x_grid) & (x_grid < x_line_left)
+                mask_lines[y, :] = (x_line_right <= x_grid) & (x_grid <= x_line_left)
 
         return mask_lines
 
