@@ -224,7 +224,7 @@ def rescaling(img_before, img_after):
         raise ValueError("Image shapes cannot be rescaled to one another. Distortion of the images would take place.")
 
     if magni < 1:
-        magni = 1/magni
+        magni = 1 / magni
         img_rescaled = np.zeros(img_after.shape)
         img_rescaled2 = np.zeros(img_after.shape)
         img_to_be_scaled = deepcopy(img_before)
@@ -237,11 +237,11 @@ def rescaling(img_before, img_after):
     if magni % 1 == 0:
         for i in range(img_to_be_scaled.shape[0]):
             for j in range(int(magni)):
-                img_rescaled[int(magni*i+j), :img_to_be_scaled.shape[1]] = img_to_be_scaled[i, :]
+                img_rescaled[int(magni * i + j), :img_to_be_scaled.shape[1]] = img_to_be_scaled[i, :]
 
         for i in range(img_to_be_scaled.shape[1]):
             for j in range(int(magni)):
-                img_rescaled2[:, int(magni*i+j)] = img_rescaled[:, i]
+                img_rescaled2[:, int(magni * i + j)] = img_rescaled[:, i]
 
         if magni_x < 1:
             return img_rescaled2, img_after, magni_x
@@ -255,7 +255,7 @@ def rescaling(img_before, img_after):
             img_to_be_scaled_too = np.array(img_before)
 
         extra_mag = np.arange(1, 10)
-        possible = extra_mag*magni
+        possible = extra_mag * magni
         it = np.where(possible % 1 == 0)[0]
 
         if len(it) == 0:
@@ -263,26 +263,26 @@ def rescaling(img_before, img_after):
                              "(which is not implemented).")
 
         extra_mag = extra_mag[np.min(it)]
-        first_rescaled = np.zeros((int(extra_mag*img_rescaled.shape[0]), int(extra_mag*img_rescaled.shape[1])))
+        first_rescaled = np.zeros((int(extra_mag * img_rescaled.shape[0]), int(extra_mag * img_rescaled.shape[1])))
         first_rescaled2 = np.zeros(first_rescaled.shape)
         second_rescaled = np.zeros(first_rescaled.shape)
         second_rescaled2 = np.zeros(first_rescaled.shape)
 
         for i in range(img_rescaled.shape[0]):
             for j in range(int(extra_mag)):
-                first_rescaled[int(extra_mag*i+j), :img_rescaled.shape[1]] = img_to_be_scaled_too[i, :]
+                first_rescaled[int(extra_mag * i + j), :img_rescaled.shape[1]] = img_to_be_scaled_too[i, :]
 
         for i in range(img_rescaled.shape[1]):
             for j in range(int(extra_mag)):
-                first_rescaled2[:, int(extra_mag*i+j)] = first_rescaled[:, i]
+                first_rescaled2[:, int(extra_mag * i + j)] = first_rescaled[:, i]
 
         for i in range(img_to_be_scaled.shape[0]):
-            for j in range(int(magni*extra_mag)):
-                second_rescaled[int(magni*extra_mag*i+j), :img_to_be_scaled.shape[1]] = img_to_be_scaled[i, :]
+            for j in range(int(magni * extra_mag)):
+                second_rescaled[int(magni * extra_mag * i + j), :img_to_be_scaled.shape[1]] = img_to_be_scaled[i, :]
 
         for i in range(img_to_be_scaled.shape[1]):
-            for j in range(int(magni*extra_mag)):
-                second_rescaled2[:, int(magni*extra_mag*i+j)] = second_rescaled[:, i]
+            for j in range(int(magni * extra_mag)):
+                second_rescaled2[:, int(magni * extra_mag * i + j)] = second_rescaled[:, i]
 
         if magni_x < 1:
             return second_rescaled2, first_rescaled2, magni_x
@@ -388,8 +388,8 @@ def overlay(img_before, img_after, max_shift=5):
     # calculating the shift in y and x with finding the maximum in the convolution
     shift = np.where(conv == np.max(conv))
     shift = np.asarray(shift)
-    shift[0] = shift[0] - (conv.shape[0]-1) / 2
-    shift[1] = shift[1] - (conv.shape[1]-1) / 2
+    shift[0] = shift[0] - (conv.shape[0] - 1) / 2
+    shift[1] = shift[1] - (conv.shape[1] - 1) / 2
 
     img_after = img_after + mean_after
 
@@ -491,24 +491,28 @@ def get_image(data_paths_before, data_paths_after, channel_before, channel_after
         # finding the in focus slice.
         # because the raw data is not yet scaled properly, the position needs to be adjusted for that
         if magni == 1:
-            img_before = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos, milling_x_pos,
-                                                               channel_before, num_slices=max_slices_focus)
-            img_after = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos - shift[0],
-                                                              milling_x_pos - shift[1], channel_after,
-                                                              num_slices=max_slices_focus)
+            img_before, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos,
+                                                                         milling_x_pos,
+                                                                         channel_before, num_slices=max_slices_focus)
+            img_after, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos - shift[0],
+                                                                        milling_x_pos - shift[1], channel_after,
+                                                                        num_slices=max_slices_focus)
         elif magni > 1:
-            img_before = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos, milling_x_pos,
-                                                               channel_before, num_slices=max_slices_focus)
-            img_after = find_focus_z_slice_and_outlier_cutoff(data_after_milling, (milling_y_pos - shift[0]) / magni,
-                                                              (milling_x_pos - shift[1]) / magni, channel_after,
-                                                              num_slices=max_slices_focus)
+            img_before, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos,
+                                                                         milling_x_pos,
+                                                                         channel_before, num_slices=max_slices_focus)
+            img_after, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling,
+                                                                        (milling_y_pos - shift[0]) / magni,
+                                                                        (milling_x_pos - shift[1]) / magni,
+                                                                        channel_after,
+                                                                        num_slices=max_slices_focus)
         elif magni < 1:
-            img_before = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos * magni,
-                                                               milling_x_pos * magni, channel_before,
-                                                               num_slices=max_slices_focus)
-            img_after = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos - shift[0],
-                                                              milling_x_pos - shift[1], channel_after,
-                                                              num_slices=max_slices_focus)
+            img_before, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos * magni,
+                                                                         milling_x_pos * magni, channel_before,
+                                                                         num_slices=max_slices_focus)
+            img_after, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos - shift[0],
+                                                                        milling_x_pos - shift[1], channel_after,
+                                                                        num_slices=max_slices_focus)
     elif mode == 'projection':
         # reading the data and just make a z-projection
         data_before_milling = tiff.read_data(data_paths_before)
@@ -562,7 +566,7 @@ def blur_and_norm(img, blur=25):
 
 
 def create_diff_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, open_iter=12, ero_iter=0,
-                     squaring=False, max_square=1/3):
+                     squaring=False, max_square=1 / 3):
     """
     Here a mask is created with looking at the difference in intensities between the blurred images before and after
     milling. A threshold is set for the difference and a binary opening is performed to get rid of too small
@@ -607,7 +611,7 @@ def create_diff_mask(img_before_blurred, img_after_blurred, threshold_mask=0.3, 
         # if the square is too big, it will not be squared because it indicates that something went wrong
         # with the masking (a milling site is not so big).
         if x_max - x_min < mask.shape[1] * max_square:
-            mask[y_min:y_max+1, x_min:x_max+1] = True
+            mask[y_min:y_max + 1, x_min:x_max + 1] = True
 
     return mask
 
@@ -931,6 +935,9 @@ def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, x_pos_mil, min
     if groups is None:
         return None
 
+    if len(groups) == 0:
+        return np.array([])
+
     size_groups_combined = np.zeros((len(groups), len(groups)))
     # here we look at each combination of groups and if they have the right conditions, if so, the combined size of
     # the two groups will be put in the output array.
@@ -1174,13 +1181,13 @@ def create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, i
             groups2 = group_single_lines(x_lines3, y_lines3, lines3, angle_lines3,
                                          max_distance=img_shape[1] / inv_max_dist, max_angle_diff=max_angle)
 
-    print(len(groups2))
+    # print(len(groups2))
     if len(groups2) > 1:
-        x_left_mean = np.mean(x_lines3[groups2[0]])
-        y_left_mean = np.mean(y_lines3[groups2[0]])
+        x_left_mean = int(np.mean(x_lines3[groups2[0]]))
+        y_left_mean = int(np.mean(y_lines3[groups2[0]]))
         angle_left_mean = np.mean(angle_lines3[groups2[0]])
-        x_right_mean = np.mean(x_lines3[groups2[1]])
-        y_right_mean = np.mean(y_lines3[groups2[1]])
+        x_right_mean = int(np.mean(x_lines3[groups2[1]]))
+        y_right_mean = int(np.mean(y_lines3[groups2[1]]))
         angle_right_mean = np.mean(angle_lines3[groups2[1]])
 
         x_grid = np.arange(0, img_shape[1], 1, dtype=int)

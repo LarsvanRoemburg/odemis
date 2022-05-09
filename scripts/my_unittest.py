@@ -1,3 +1,4 @@
+import logging
 import unittest
 import gc
 import numpy as np
@@ -429,7 +430,19 @@ class TestMyClass(unittest.TestCase):
         for i in range(correct.shape[1]):
             correct[i, i:i+11] = True
 
+        overlap = np.sum(result & correct) / np.sum(result | correct)
+
+        self.assertTrue(overlap >= 0.90)
+
+        img = np.zeros((100, 100))
+        img_shape = img.shape
+
+        result = create_line_mask(np.array([]), x_lines2, y_lines2, lines2, angle_lines2, img_shape)
+        correct = np.zeros((100, 100), dtype=bool)
+
         self.assertTrue(np.array_equal(result, correct))
+        # with self.assertWarns(Warning):
+        #     create_line_mask(np.array([]), x_lines2, y_lines2, lines2, angle_lines2, img_shape)
 
 
 

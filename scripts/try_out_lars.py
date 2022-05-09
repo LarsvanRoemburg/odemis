@@ -82,8 +82,6 @@ data_paths_true_masks = ["/home/victoria/Documents/Lars/data/1/true_mask_FOV2_GF
                          "true_mask_FOV6_checkpoint02_ch00.tiff"
                          ]
 
-
-
 if __name__ == '__main__':
     ll = len(data_paths_before)
     channel_before = np.zeros(ll, dtype=int)
@@ -129,6 +127,7 @@ if __name__ == '__main__':
 
         # here I try line detection
         x_lines, y_lines, lines, edges = find_lines(img_after_blurred)
+        # lines = np.array([])
         # apparently for mammalian cell samples, setting the hysteresis threshold to 0 and 0 is better
 
         # look at the lines and see if they have the same angle and rough distance between them
