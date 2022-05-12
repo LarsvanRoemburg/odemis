@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from odemis.dataio import tiff
 from scripts.functions_lars import find_focus_z_slice_and_outlier_cutoff, rescaling, overlay, \
     z_projection_and_outlier_cutoff, blur_and_norm, create_diff_mask, find_x_or_y_pos_milling_site, calculate_angles, \
-    create_line_mask
+    create_line_mask, combine_masks, create_masked_img, create_binary_end_image
 from try_out_lars import data_paths_before, data_paths_after, data_paths_true_masks
 from copy import deepcopy
 
@@ -384,17 +384,18 @@ class TestMyClass(unittest.TestCase):
         pass
 
     def test_calculate_angles(self):
-        lines = np.zeros((6, 1, 4))
+        lines = np.zeros((7, 1, 4))
         lines[0, 0, :] = np.array([0, 0, 1, 1])
         lines[1, 0, :] = np.array([0, 0, 0, 1])
         lines[2, 0, :] = np.array([0, 0, -1, 1])
         lines[3, 0, :] = np.array([0, 0, -1, -1])
         lines[4, 0, :] = np.array([0, 0, 1, -1])
         lines[5, 0, :] = np.array([0, 0, 1, 0])
+        lines[6, 0, :] = np.array([23, 399, 433, 93])
 
         result = calculate_angles(lines)
-
-        correct = np.array([np.pi/4, np.pi/2, np.pi*3/4, np.pi/4, np.pi*3/4, 0])
+        a = np.arctan((93-399)/(433-23)) + np.pi
+        correct = np.array([np.pi/4, np.pi/2, np.pi*3/4, np.pi/4, np.pi*3/4, 0, a])
 
         self.assertTrue(np.array_equal(result, correct))
 
@@ -441,11 +442,199 @@ class TestMyClass(unittest.TestCase):
         correct = np.zeros((100, 100), dtype=bool)
 
         self.assertTrue(np.array_equal(result, correct))
-        # with self.assertWarns(Warning):
-        #     create_line_mask(np.array([]), x_lines2, y_lines2, lines2, angle_lines2, img_shape)
 
+        n = 6
+        after_grouping = np.arange(n, dtype=int)
+        x_lines2 = np.array([10, 10, 10, 22.5, 32.5, 42.5])
+        y_lines2 = np.array([15, 35, 55, 15, 35, 55])
+        lines2 = np.zeros((n, 1, 4), dtype=int)
+        lines2[0, 0, :] = np.array([10, 10, 10, 20])
+        lines2[1, 0, :] = np.array([10, 30, 10, 40])
+        lines2[2, 0, :] = np.array([10, 50, 10, 60])
+        lines2[3, 0, :] = np.array([20, 10, 25, 20])
+        lines2[4, 0, :] = np.array([30, 30, 35, 40])
+        lines2[5, 0, :] = np.array([40, 50, 45, 60])
+        angle_lines2 = np.zeros(n)
+        angle_lines2[:3] = np.pi/2
+        angle_lines2[3:] = np.arctan(2)
 
+        img = np.zeros((100, 100))
+        img_shape = img.shape
 
+        result = create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_shape)
+        correct = np.zeros((100, 100), dtype=bool)
+        e = 0
+        for i in range(img_shape[1]):
+            correct[i, 10:15+int(e)] = True
+            e += 1/2
+
+        overlap = np.sum(result & correct) / np.sum(result | correct)
+
+        self.assertTrue(overlap >= 0.90)
+
+    def test_combine_masks(self):
+        n = 100
+        mask1 = np.zeros((n, n), dtype=bool)
+        mask2 = np.zeros((n, n), dtype=bool)
+        mask3 = np.zeros((n, n), dtype=bool)
+        mask1[30:40, 9:18] = True
+        mask2[:, 10:21] = True
+
+        result, combined = combine_masks(mask1, mask2, mask3, thres_diff=70, thres_lines=5, y_cut_off=6, iter_dil=0,
+                                         iter_er=0, squaring=True)
+        correct = np.zeros((n, n), dtype=bool)
+        correct[30:40, 10:21] = True
+
+        self.assertTrue(np.array_equal(result, correct))
+
+        result, combined = combine_masks(mask1, mask2, mask3, thres_diff=70, thres_lines=5, y_cut_off=6, iter_dil=5,
+                                         iter_er=0, squaring=True)
+        correct = np.zeros((n, n), dtype=bool)
+        correct[25:45, 10:21] = True
+
+        self.assertTrue(np.array_equal(result, correct))
+
+        result, combined = combine_masks(mask1, mask2, mask3, thres_diff=70, thres_lines=5, y_cut_off=6, iter_dil=0,
+                                         iter_er=2, squaring=True)
+        correct = np.zeros((n, n), dtype=bool)
+        correct[30:40, 12:19] = True
+
+        self.assertTrue(np.array_equal(result, correct))
+
+        result, combined = combine_masks(mask1, mask2, mask3, thres_diff=95, thres_lines=5, y_cut_off=6, iter_dil=0,
+                                         iter_er=0, squaring=True)
+        correct = np.zeros((n, n), dtype=bool)
+        correct[30:40, 10:21] = True
+
+        self.assertTrue(np.array_equal(result, correct))
+
+        result, combined = combine_masks(mask1, mask2, mask3, thres_diff=70, thres_lines=55, y_cut_off=6, iter_dil=0,
+                                         iter_er=0, squaring=True)
+        correct = np.zeros((n, n), dtype=bool)
+        correct[30:40, 10:21] = True
+
+        self.assertTrue(np.array_equal(result, correct))
+
+        result, combined = combine_masks(mask1, mask2, mask3, thres_diff=95, thres_lines=55, y_cut_off=6, iter_dil=0,
+                                         iter_er=0, squaring=True)
+        correct = np.zeros((n, n), dtype=bool)
+        correct[30:40, 9:18] = True
+
+        self.assertTrue(np.array_equal(result, correct))
+
+        result, combined = combine_masks(mask1, mask2, mask3, thres_diff=70, thres_lines=5, y_cut_off=3, iter_dil=0,
+                                         iter_er=0, squaring=True)
+        correct = np.zeros((n, n), dtype=bool)
+        correct[33:40, 10:21] = True
+
+        self.assertTrue(np.array_equal(result, correct))
+
+        result, combined = combine_masks(mask1, mask2, mask3, thres_diff=70, thres_lines=5, y_cut_off=2, iter_dil=0,
+                                         iter_er=0, squaring=True)
+        correct = np.zeros((n, n), dtype=bool)
+
+        self.assertTrue(np.array_equal(result, correct))
+
+        mask1 = np.zeros((n, n), dtype=bool)
+        mask2 = np.zeros((n, n), dtype=bool)
+        mask3 = np.zeros((n, n), dtype=bool)
+
+        for i in range(20):
+            mask1[20+i, 20+i:30+i] = True
+        mask2[:, 30:40] = True
+        mask3[:, 20:40] = True
+
+        result, combined = combine_masks(mask1, mask2, mask3, thres_diff=70, thres_lines=5, y_cut_off=6, iter_dil=0,
+                                         iter_er=0, squaring=False)
+        correct = np.zeros((n, n), dtype=bool)
+        correct[20:40, 20:40] = True
+
+        self.assertTrue(np.array_equal(result, correct))
+
+    def test_create_masked_img(self):
+        n = 100
+        img = np.zeros((n, n))
+        mask = np.zeros((n, n), dtype=bool)
+        mask[20:50, 20:50] = True
+        for i in range(img.shape[0]):
+            img[i, :] = np.arange(n) + i
+
+        result, extent = create_masked_img(img, mask, cropping=False)
+
+        correct = np.zeros((n, n))
+        ran = np.zeros(n, dtype=bool)
+        ran[20:50] = True
+        for i in range(30):
+            correct[i+20, :] = (np.arange(n) + i + 20) * ran
+        correct[0, 0] = 1
+
+        self.assertTrue(np.array_equal(correct, result))
+
+        mask = np.zeros((n, n), dtype=bool)
+        r = 20
+        mid_y = 60
+        mid_x = 50
+        for i in range(mask.shape[0]):
+            for j in range(mask.shape[1]):
+                mask[i, j] = (i-mid_y)**2+(j-mid_x)**2 <= r**2
+
+        result, extent = create_masked_img(img, mask, cropping=False)
+        correct = img*mask
+        correct[0, 0] = 1
+
+        self.assertTrue(np.array_equal(result, correct))
+
+        result, extent = create_masked_img(img, mask, cropping=True)
+        correct = correct[40:81, 30:71]
+        correct[0, 0] = 1
+
+        self.assertTrue(np.array_equal(result, correct))
+
+    def test_create_binary_end_image(self):
+        n = 100
+        img = np.zeros((n, n))
+        mask = np.zeros((n, n), dtype=bool)
+        img[15:26, 40:51] = 0.5
+        mask[10:61, 10:61] = True
+
+        result, result2 = create_binary_end_image(mask, img, threshold=0.25, open_close=True, rid_of_back_signal=True,
+                                                  b1=1, b2=4, b3=6, b4=10)
+
+        correct = img > 0.25
+
+        self.assertTrue(np.array_equal(correct, result))
+        self.assertTrue(np.array_equal(np.zeros((n, n), dtype=bool), result2))
+
+        result, result2 = create_binary_end_image(mask, img, threshold=0.55, open_close=True, rid_of_back_signal=True,
+                                                  b1=1, b2=4, b3=6, b4=10)
+        self.assertTrue(np.array_equal(np.zeros((n, n), dtype=bool), result))
+        self.assertTrue(np.array_equal(np.zeros((n, n), dtype=bool), result2))
+
+        result, result2 = create_binary_end_image(mask, img, threshold=0.25, open_close=True, rid_of_back_signal=False,
+                                                  b1=1, b2=4, b3=6, b4=10)
+        self.assertTrue(np.array_equal(correct, result))
+        self.assertTrue(np.array_equal(correct, result2))
+
+        img = np.zeros((n, n))
+        mask = np.zeros((n, n), dtype=bool)
+        img[15:20, 40:45] = 0.5
+        img[40:51, 20:31] = 0.5
+        mask[10:61, 10:61] = True
+        correct = np.zeros((n, n), dtype=bool)
+        correct[40:51, 20:31] = True
+
+        result, result2 = create_binary_end_image(mask, img, threshold=0.25, open_close=True, rid_of_back_signal=False,
+                                                  b1=1, b2=4, b3=6, b4=10)
+        self.assertTrue(np.array_equal(correct, result))
+
+        result, result2 = create_binary_end_image(mask, img, threshold=0.25, open_close=True, rid_of_back_signal=True,
+                                                  b1=1, b2=2, b3=6, b4=10)
+        self.assertTrue(np.array_equal(correct, result2))
+        correct[15:20, 40:45] = True
+        self.assertTrue(np.array_equal(correct, result))
+
+    def test_detect_blobs(self):
+        pass
 
 if __name__ == '__main__':
     unittest.main()

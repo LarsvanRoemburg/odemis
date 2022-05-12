@@ -690,6 +690,7 @@ def find_lines(img_after_blurred, blur=10, low_thres_edges=0.1, high_thres_edges
     max_line_gap = shape_1 * max_line_gap
 
     # finding the edges via the canny function and the lines with the hough lines function
+    # image = gaussian_filter(image, sigma=blur)
     edges = img_as_ubyte(canny(image, sigma=blur, low_threshold=low_thres_edges, high_threshold=high_thres_edges))
     lines = cv2.HoughLinesP(edges, 1, angle_res, threshold=line_thres, minLineLength=min_len_lines,
                             maxLineGap=max_line_gap)
@@ -957,7 +958,7 @@ def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, x_pos_mil, min
                 y3 = np.tan(angle_mean + 1e-10) * (x3 - x2) + y2
                 dist = np.sqrt((x3 - x1) ** 2 + (y3 - y1) ** 2)
 
-                if (dist < max_dist) & (dist > min_dist):
+                if min_dist < dist < max_dist:
                     size_groups_combined[i, j] = (len(groups[i]) + len(groups[j]))
 
     # if there are some groups combined, we search for the group which has the most lines in it (max size)
@@ -1060,76 +1061,6 @@ def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, x_pos_mil, min
     return after_grouping
 
 
-def show_line_detection_steps(img_after, img_after_blurred, edges, lines, lines2, after_grouping):
-    """
-    Here the line detection steps are shown in images for visualization of the process.
-
-    Parameters:
-        img_after (ndarray):            The image after milling on which the line detection is executed.
-        img_after_blurred (ndarray):    The image after milling blurred and normalized.
-        edges (ndarray):                The edges image from the canny function in find_lines().
-        lines (ndarray):                The lines before combine_and_constraint_lines().
-        lines2 (ndarray):               The lines after combine_and_constraint_lines().
-        after_grouping (ndarray):       The end result of the lines which (probably) represent the milling site.
-
-    Returns:
-        Nothing, only shows the images with matplotlib.pyplot.
-    """
-
-    if lines is not None:
-        # creating all the images in which we will visualize the lines at different steps in the line detection
-        image = img_as_ubyte(img_after_blurred)
-        image = cv2.bitwise_not(image)
-        image = image * 0.8
-        image1 = deepcopy(image)
-        image2 = deepcopy(image)
-        image3 = deepcopy(image)
-
-        if len(after_grouping) > 0:
-            print("{} lines after grouping".format(len(after_grouping)))
-
-            # the lines after grouping drawn in image3
-            for points in lines2[after_grouping]:
-                # Extracted points nested in the list
-                x1, y1, x2, y2 = points[0]
-                # Draw the lines joining the points on the original image
-                cv2.line(image3, (x1, y1), (x2, y2), 255, 2)
-        else:
-            print("0 lines after grouping")
-
-        # the lines before grouping drawn in image
-        for points in lines:
-            # Extracted points nested in the list
-            x1, y1, x2, y2 = points[0]
-            # Draw the lines joining the points on the original image
-            cv2.line(image, (x1, y1), (x2, y2), 255, 2)
-
-        # the lines before grouping and after selection in image1
-        for points in lines2:
-            # Extracted points nested in the list
-            x1, y1, x2, y2 = points[0]
-            # Draw the lines joining the points on the original image
-            cv2.line(image1, (x1, y1), (x2, y2), 255, 2)
-
-        # plotting the images
-        fig, ax = plt.subplots(ncols=2, nrows=3)
-        ax[0, 0].imshow(img_after)
-        ax[0, 0].set_title('img_after')
-        ax[0, 1].imshow(edges)
-        ax[0, 1].set_title('the edges')
-        ax[1, 1].imshow(image1)
-        ax[1, 1].set_title('similar lines combined')
-        ax[1, 0].imshow(image)
-        ax[1, 0].set_title('all the lines')
-        # ax[2, 0].imshow(image2)
-        # ax[2, 0].set_title('after selection')
-        ax[2, 1].imshow(image3)
-        ax[2, 1].set_title('after grouping')
-        plt.show()
-    else:
-        print("No lines were detected so nothing can be shown.")
-
-
 def create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_shape, inv_max_dist=20,
                      max_angle=np.pi / 8, all_groups=False):
     """
@@ -1212,8 +1143,8 @@ def create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, i
         return None
 
 
-def combine_masks(mask_diff, mask_lines, mask_lines_all, thres_diff=70, thres_lines=5, y_cut_off=6, it=75,
-                  squaring=True):
+def combine_masks(mask_diff, mask_lines, mask_lines_all, thres_diff=70, thres_lines=5, y_cut_off=6, iter_dil=75,
+                  iter_er=10, squaring=True):
     """
     Here we look if the mask from the difference in intensity and the mask from the line detection can be combined.
     The overlap between the masks is used as a measure to see if they can be combined or not.
@@ -1228,8 +1159,10 @@ def combine_masks(mask_diff, mask_lines, mask_lines_all, thres_diff=70, thres_li
         thres_lines (int):          The minimal % in overlap for the mask_lines.
         y_cut_off (int):            mask[:mask.shape[1]/y_cut_off, :] = False
                                     mask[-mask.shape[1]/y_cut_off:, :] = False
-        it (int):                   How much you want the combined mask to be dilated in the y-direction
+        iter_dil (int):             How much you want the combined mask to be dilated in the y-direction
                                     (the x-direction will be fully filled to the mask_lines constraint).
+        iter_er (int):              How much you want to erode the mask in the end to get away from the boundaries
+                                    (only in x direction!).
         squaring (bool):            If the masks cannot be combined, set to True if you want the mask_diff to be a
                                     square. It will not square if the mask is too big which indicates that there are
                                     probably multiple milling sites or the masking went wrong.
@@ -1284,21 +1217,24 @@ def combine_masks(mask_diff, mask_lines, mask_lines_all, thres_diff=70, thres_li
             y_min = np.min(index_mask[0])
             x_max = np.max(index_mask[1])
             y_max = np.max(index_mask[0])
-            mask_combined[y_min:y_max, x_min:x_max] = True
+            mask_combined[y_min:y_max + 1, x_min:x_max + 1] = True
 
         # dilate the mask to the boundary lines of mask_lines
-        mask_combined = binary_dilation(mask_combined, iterations=it) * mask_lines
+        if iter_dil != 0:
+            mask_combined = binary_dilation(mask_combined, iterations=iter_dil) * mask_lines
         mask_combined = binary_dilation(mask_combined, structure=np.array([[0, 0, 0], [1, 1, 1], [0, 0, 0]]),
                                         iterations=0, mask=mask_lines)
-        mask_combined = binary_erosion(mask_combined, structure=np.array([[0, 0, 0], [1, 1, 1], [0, 0, 0]]),
-                                       iterations=10)
+        if iter_er != 0:
+            mask_combined = binary_erosion(mask_combined, structure=np.array([[0, 0, 0], [1, 1, 1], [0, 0, 0]]),
+                                           iterations=iter_er)
 
         return mask_combined, True
 
     else:  # if the overlap is not big enough, we just use the mask_diff
-        mask_diff[:int(mask_diff.shape[0] / y_cut_off), :] = False
-        mask_diff[-int(mask_diff.shape[0] / y_cut_off):, :] = False
-        index_mask = np.where(mask_diff)
+        mask_combined = np.array(mask_diff)
+        mask_combined[:int(mask_combined.shape[0] / y_cut_off), :] = False
+        mask_combined[-int(mask_combined.shape[0] / y_cut_off):, :] = False
+        index_mask = np.where(mask_combined)
 
         # squaring the mask
         if squaring & (len(index_mask[0]) != 0):
@@ -1308,13 +1244,14 @@ def combine_masks(mask_diff, mask_lines, mask_lines_all, thres_diff=70, thres_li
             y_max = np.max(index_mask[0])
 
             # if the mask is too big, then there are maybe multiple milling sites so squaring will not be useful
-            if x_max - x_min <= mask_diff.shape[1] / 3:
-                mask_diff[y_min:y_max, x_min:x_max] = True
+            if x_max - x_min <= mask_combined.shape[1] / 3:
+                mask_combined[y_min:y_max + 1, x_min:x_max + 1] = True
 
         else:  # if you don't want to square it, a small dilation is used
-            mask_diff = binary_dilation(mask_diff, iterations=10)
+            if iter_er != 0:
+                mask_combined = binary_dilation(mask_combined, iterations=iter_er)
 
-        return mask_diff, False
+        return mask_combined, False
 
 
 def create_masked_img(img_after, mask, cropping=False):
@@ -1343,7 +1280,7 @@ def create_masked_img(img_after, mask, cropping=False):
         x_max = np.max(index_mask[1])
         y_max = np.max(index_mask[0])
 
-        masked_img = masked_img[y_min:y_max, x_min:x_max]
+        masked_img = masked_img[y_min:y_max + 1, x_min:x_max + 1]
 
     else:  # for the extent in the plotting
         x_min = 0
@@ -1351,12 +1288,15 @@ def create_masked_img(img_after, mask, cropping=False):
         x_max = img_after.shape[1]
         y_max = img_after.shape[0]
 
-    masked_img[0, 0] = 1  # to give the images the same color scale
+    masked_img[0, 0] = 1  # to give the images the same color scale,
+    # if you get rid of this, also get rid of it in the test
+
     extents = (x_min, x_max, y_max, y_min)
     return masked_img, extents
 
 
-def create_binary_end_image(mask, masked_img, threshold=0.25, open_close=True, rid_of_back_signal=True):
+def create_binary_end_image(mask, masked_img, threshold=0.25, open_close=True, rid_of_back_signal=True, b1=1, b2=4,
+                            b3=6, b4=10):
     """
     To apply a threshold on the image signal within the mask.
     After the threshold, some binary closing, opening and again closing is performed (optional but recommended).
@@ -1368,6 +1308,11 @@ def create_binary_end_image(mask, masked_img, threshold=0.25, open_close=True, r
         threshold (float):              The threshold for signal detection (just a simple img >= threshold).
         open_close (bool):              If the binary operations should be executed or not.
         rid_of_back_signal (bool):      All the blobs touching the boundaries, will be removed.
+        b1 (int):                       The first binary closing if open_close=True.
+        b2 (int):                       The first binary opening if open_close=True.
+        b3 (int):                       The second binary closing if open_close=True
+        b4 (int):                       The thickness of the near boundary area with which the signal being (partially)
+                                        in this region is discarded.
 
     Returns:
         binary_end_result (ndarray):    A binary image which shows the thought to be signal in the masked image.
@@ -1377,21 +1322,22 @@ def create_binary_end_image(mask, masked_img, threshold=0.25, open_close=True, r
 
     # getting rid of too small ROIs and noise after the threshold
     if open_close:
-        binary_end_result = binary_closing(binary_opening(binary_closing(binary_end_result, iterations=1),
-                                                          iterations=4), iterations=6)
+        binary_end_result = binary_closing(
+            binary_opening(binary_closing(binary_end_result, structure=np.ones((3, 3)), iterations=b1),
+                           structure=np.ones((3, 3)), iterations=b2), structure=np.ones((3, 3)), iterations=b3)
 
-    # getting rid of signal at the boundaries
+    # getting rid of signal at the boundaries of the mask
     if rid_of_back_signal:
         index_mask = np.where(mask)
         # cropping the mask to match the image
-        if len(index_mask[0]) != 0:
+        if mask.shape != masked_img.shape:
             x_min = np.min(index_mask[1])
             y_min = np.min(index_mask[0])
             x_max = np.max(index_mask[1])
             y_max = np.max(index_mask[0])
-            mask = mask[y_min:y_max, x_min:x_max]
+            mask = mask[y_min:y_max + 1, x_min:x_max + 1]
         # multiplying the signal with the boundaries of the mask
-        bound = binary_end_result * (1.0 * mask - 1.0 * binary_erosion(mask, iterations=10))
+        bound = binary_end_result * (1.0 * mask - 1.0 * binary_erosion(mask, iterations=b4))
 
         # subtracting the boundary signal of the initial signal image
         minus = binary_dilation(bound, mask=binary_end_result, iterations=0)  # * binary_end_result
@@ -1507,6 +1453,76 @@ def detect_blobs(binary_end_result, min_circ=0, max_circ=1, min_area=0, max_area
         plt.show()
 
     return key_points, yxr
+
+
+def show_line_detection_steps(img_after, img_after_blurred, edges, lines, lines2, after_grouping):
+    """
+    Here the line detection steps are shown in images for visualization of the process.
+
+    Parameters:
+        img_after (ndarray):            The image after milling on which the line detection is executed.
+        img_after_blurred (ndarray):    The image after milling blurred and normalized.
+        edges (ndarray):                The edges image from the canny function in find_lines().
+        lines (ndarray):                The lines before combine_and_constraint_lines().
+        lines2 (ndarray):               The lines after combine_and_constraint_lines().
+        after_grouping (ndarray):       The end result of the lines which (probably) represent the milling site.
+
+    Returns:
+        Nothing, only shows the images with matplotlib.pyplot.
+    """
+
+    if lines is not None:
+        # creating all the images in which we will visualize the lines at different steps in the line detection
+        image = img_as_ubyte(img_after_blurred)
+        image = cv2.bitwise_not(image)
+        image = image * 0.8
+        image1 = deepcopy(image)
+        image2 = deepcopy(image)
+        image3 = deepcopy(image)
+
+        if len(after_grouping) > 0:
+            print("{} lines after grouping".format(len(after_grouping)))
+
+            # the lines after grouping drawn in image3
+            for points in lines2[after_grouping]:
+                # Extracted points nested in the list
+                x1, y1, x2, y2 = points[0]
+                # Draw the lines joining the points on the original image
+                cv2.line(image3, (x1, y1), (x2, y2), 255, 2)
+        else:
+            print("0 lines after grouping")
+
+        # the lines before grouping drawn in image
+        for points in lines:
+            # Extracted points nested in the list
+            x1, y1, x2, y2 = points[0]
+            # Draw the lines joining the points on the original image
+            cv2.line(image, (x1, y1), (x2, y2), 255, 2)
+
+        # the lines before grouping and after selection in image1
+        for points in lines2:
+            # Extracted points nested in the list
+            x1, y1, x2, y2 = points[0]
+            # Draw the lines joining the points on the original image
+            cv2.line(image1, (x1, y1), (x2, y2), 255, 2)
+
+        # plotting the images
+        fig, ax = plt.subplots(ncols=2, nrows=3)
+        ax[0, 0].imshow(img_after)
+        ax[0, 0].set_title('img_after')
+        ax[0, 1].imshow(edges)
+        ax[0, 1].set_title('the edges')
+        ax[1, 1].imshow(image1)
+        ax[1, 1].set_title('similar lines combined')
+        ax[1, 0].imshow(image)
+        ax[1, 0].set_title('all the lines')
+        # ax[2, 0].imshow(image2)
+        # ax[2, 0].set_title('after selection')
+        ax[2, 1].imshow(image3)
+        ax[2, 1].set_title('after grouping')
+        plt.show()
+    else:
+        print("No lines were detected so nothing can be shown.")
 
 
 def plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img, masked_img2,

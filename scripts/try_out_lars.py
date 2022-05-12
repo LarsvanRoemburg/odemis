@@ -92,7 +92,7 @@ if __name__ == '__main__':
     threshold_end = 0.25
     blur = 25
     max_slices = 30
-    cropping = True  # if true, the last images will be cropped to only the mask
+    cropping = False  # if true, the last images will be cropped to only the mask
 
     for nnn in np.arange(2, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
         print("dataset nr. {}".format(nnn + 1))
