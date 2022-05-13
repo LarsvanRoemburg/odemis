@@ -195,3 +195,14 @@ if __name__ == '__main__':
         gc.collect()
 
         print("Successful!\n")
+
+        class aut:
+            __int__(self, val1=3, )
+
+
+        test = automated_roi_detection(val1=5)
+        test.function1()
+        test.function2()
+        test.output
+
+

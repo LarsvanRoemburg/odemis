@@ -1258,6 +1258,7 @@ def create_masked_img(img_after, mask, cropping=False):
     """
     Multiplies the mask with the image after milling, so you only see the signal within the mask.
     If cropping set to True and there is a mask, the outputted image is cropped to show only the mask.
+    NOTE: for visualization purposes, the 0,0 pixel is always set to 1.
 
     Parameters:
         img_after (ndarray):    The image to be multiplied with the mask.

@@ -12,7 +12,7 @@ from try_out_lars import data_paths_before, data_paths_after, data_paths_true_ma
 from copy import deepcopy
 
 
-class TestMyClass(unittest.TestCase):
+class TestFunctionsLars(unittest.TestCase):
     """My test cases testing my tests"""
 
     @classmethod
@@ -626,6 +626,7 @@ class TestMyClass(unittest.TestCase):
         result, result2 = create_binary_end_image(mask, img, threshold=0.25, open_close=True, rid_of_back_signal=False,
                                                   b1=1, b2=4, b3=6, b4=10)
         self.assertTrue(np.array_equal(correct, result))
+        self.assertTrue(np.array_equal(correct, result2))
 
         result, result2 = create_binary_end_image(mask, img, threshold=0.25, open_close=True, rid_of_back_signal=True,
                                                   b1=1, b2=2, b3=6, b4=10)
