@@ -1,13 +1,16 @@
 import logging
 import unittest
 import gc
+
+import cv2
 import numpy as np
 from scipy.ndimage import gaussian_filter
 import matplotlib.pyplot as plt
 from odemis.dataio import tiff
 from scripts.functions_lars import find_focus_z_slice_and_outlier_cutoff, rescaling, overlay, \
     z_projection_and_outlier_cutoff, blur_and_norm, create_diff_mask, find_x_or_y_pos_milling_site, calculate_angles, \
-    create_line_mask, combine_masks, create_masked_img, create_binary_end_image
+    create_line_mask, combine_masks, create_masked_img, create_binary_end_image, get_image, find_lines, \
+    combine_and_constraint_lines
 from try_out_lars import data_paths_before, data_paths_after, data_paths_true_masks
 from copy import deepcopy
 
@@ -140,9 +143,9 @@ class TestFunctionsLars(unittest.TestCase):
 
         result_a, result_b, result_scaling = rescaling(a, b)
 
-        correct_a = np.zeros((n*m, n*m))
+        correct_a = np.zeros((n * m, n * m))
         correct_a[0:m, :] = 1
-        correct_b = np.ones((n*m, n*m))
+        correct_b = np.ones((n * m, n * m))
         correct_scaling = float(n / m)
 
         self.assertTrue(np.array_equal(result_a, correct_a))
@@ -193,7 +196,7 @@ class TestFunctionsLars(unittest.TestCase):
         result_a, result_b, result_scaling = rescaling(a, b)
 
         correct_a = np.zeros((2 * m, 2 * m))
-        d = np.zeros(2*m)
+        d = np.zeros(2 * m)
         for i in range(len(d)):
             d[i] = int(i // 3)
 
@@ -215,7 +218,7 @@ class TestFunctionsLars(unittest.TestCase):
         result_a, result_b, result_scaling = rescaling(a, b)
 
         correct_a = np.zeros((m, m))
-        correct_a[:int(correct_a.shape[0]/2), :] = 1
+        correct_a[:int(correct_a.shape[0] / 2), :] = 1
         correct_b = np.ones((m, m))
         correct_scaling = float(n / m)
 
@@ -238,10 +241,10 @@ class TestFunctionsLars(unittest.TestCase):
             a = np.zeros((n, n))
             b = np.zeros((n, n))
             a[50, 50] = 1
-            b[int(i*10), int(i*10)] = 1
+            b[int(i * 10), int(i * 10)] = 1
 
             b_result, shift = overlay(a, b, 1)
-            correct_shift = np.array([[50-int(i*10)], [50-int(i*10)]])
+            correct_shift = np.array([[50 - int(i * 10)], [50 - int(i * 10)]])
 
             self.assertTrue(np.array_equal(shift, correct_shift))
 
@@ -249,10 +252,10 @@ class TestFunctionsLars(unittest.TestCase):
             a = np.zeros((n, n))
             b = np.zeros((n, n))
             a[50, 50] = 1
-            b[50, int(i*10)] = 1
+            b[50, int(i * 10)] = 1
 
             b_result, shift = overlay(a, b, 1)
-            correct_shift = np.array([[0], [50-int(i*10)]])
+            correct_shift = np.array([[0], [50 - int(i * 10)]])
 
             self.assertTrue(np.array_equal(shift, correct_shift))
 
@@ -260,15 +263,123 @@ class TestFunctionsLars(unittest.TestCase):
             a = np.zeros((n, n))
             b = np.zeros((n, n))
             a[50, 50] = 1
-            b[int(i*10), 50] = 1
+            b[int(i * 10), 50] = 1
 
             b_result, shift = overlay(a, b, 1)
-            correct_shift = np.array([[50-int(i*10)], [0]])
+            correct_shift = np.array([[50 - int(i * 10)], [0]])
 
             self.assertTrue(np.array_equal(shift, correct_shift))
 
     def test_get_image(self):
-        pass
+        """
+        Here I do still use the functions z_projection_and_outlier_cutoff() and find_focus_z_slice_and_outlier_cutoff().
+        """
+
+        for i in np.array([0, 5]):
+            img_before, img_after, meta_before, meta_after = get_image(self.path_before[i], self.path_after[i],
+                                                                       self.channel_before[i], self.channel_after[i],
+                                                                       max_slices_proj=30,
+                                                                       max_slices_focus=5, mode='projection',
+                                                                       proj_mode='max', blur=25)
+
+            data_before_milling = tiff.read_data(self.path_before[i])
+            # meta_before = data_before_milling[self.channel_before[i]].metadata
+            img_before_correct = z_projection_and_outlier_cutoff(data_before_milling, 30, self.channel_before[i],
+                                                                 mode='max')
+            del data_before_milling
+            gc.collect()
+
+            data_after_milling = tiff.read_data(self.path_after[i])
+            # meta_after = data_after_milling[self.channel_after[i]].metadata
+            img_after_correct = z_projection_and_outlier_cutoff(data_after_milling, 30, self.channel_after[i],
+                                                                mode='max')
+
+            del data_after_milling
+            gc.collect()
+
+            self.assertTrue(np.array_equal(img_before, img_before_correct))
+            self.assertTrue(np.array_equal(img_after, img_after_correct))
+
+            img_before, img_after, meta_before, meta_after = get_image(self.path_before[i], self.path_after[i],
+                                                                       self.channel_before[i], self.channel_after[i],
+                                                                       max_slices_proj=30,
+                                                                       max_slices_focus=5, mode='in_focus',
+                                                                       proj_mode='mean', blur=25)
+
+            data_before_milling = tiff.read_data(self.path_before[i])
+            # meta_before = data_before_milling[channel_before].metadata
+            data_after_milling = tiff.read_data(self.path_after[i])
+            # meta_after = data_after_milling[channel_after].metadata
+
+            # if both data sets have only one slice, just output those.
+            if data_before_milling[0].shape[0] != 1 and data_after_milling[0].shape[0] != 1:
+                img_before_correct = z_projection_and_outlier_cutoff(data_before_milling, 30, self.channel_before[i],
+                                                                     mode='mean')
+                img_after_correct = z_projection_and_outlier_cutoff(data_after_milling, 30, self.channel_after[i],
+                                                                    mode='mean')
+            else:
+                # creating projection images for finding a rough estimate for milling site position
+                img_before_correct = z_projection_and_outlier_cutoff(data_before_milling, 30, self.channel_before[i],
+                                                                     mode='mean')
+                img_after_correct = z_projection_and_outlier_cutoff(data_after_milling, 30, self.channel_after[i],
+                                                                    mode='mean')
+
+                # rescaling one image to the other if necessary
+                img_before_correct, img_after_correct, magni = rescaling(img_before_correct, img_after_correct)
+                # calculate the shift between the two images
+                img_after_correct, shift = overlay(img_before_correct, img_after_correct, max_shift=4)
+                # shift is [dy, dx]
+
+                # blurring the images
+                img_before_correct, img_before_blurred = blur_and_norm(img_before_correct, blur=25)
+                img_after_correct, img_after_blurred = blur_and_norm(img_after_correct, blur=25)
+
+                # finding the estimates for the milling site position
+                milling_x_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x')
+                milling_y_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='y')
+
+                # finding the in focus slice.
+                # because the raw data is not yet scaled properly, the position needs to be adjusted for that
+                if magni == 1:
+                    img_before_correct, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling,
+                                                                                         milling_y_pos,
+                                                                                         milling_x_pos,
+                                                                                         self.channel_before[i],
+                                                                                         num_slices=5, mode='mean')
+                    img_after_correct, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling,
+                                                                                        milling_y_pos - shift[0],
+                                                                                        milling_x_pos - shift[1],
+                                                                                        self.channel_after[i],
+                                                                                        num_slices=5, mode='mean')
+                elif magni > 1:
+                    img_before_correct, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling,
+                                                                                         milling_y_pos,
+                                                                                         milling_x_pos,
+                                                                                         self.channel_before[i],
+                                                                                         num_slices=5, mode='mean')
+                    img_after_correct, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling,
+                                                                                        (milling_y_pos - shift[
+                                                                                            0]) / magni,
+                                                                                        (milling_x_pos - shift[
+                                                                                            1]) / magni,
+                                                                                        self.channel_after[i],
+                                                                                        num_slices=5, mode='mean')
+                elif magni < 1:
+                    img_before_correct, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling,
+                                                                                         milling_y_pos * magni,
+                                                                                         milling_x_pos * magni,
+                                                                                         self.channel_before[i],
+                                                                                         num_slices=5, mode='mean')
+                    img_after_correct, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling,
+                                                                                        milling_y_pos - shift[0],
+                                                                                        milling_x_pos - shift[1],
+                                                                                        self.channel_after[i],
+                                                                                        num_slices=5, mode='mean')
+            del data_before_milling, data_after_milling
+            gc.collect()
+
+            self.assertTrue(np.array_equal(img_before, img_before_correct))
+            self.assertTrue(np.array_equal(img_after, img_after_correct))
 
     def test_blur_and_norm(self):
         img = np.zeros((100, 100))
@@ -278,7 +389,7 @@ class TestFunctionsLars(unittest.TestCase):
 
         correct = img
         correct_blurred = gaussian_filter(img, 1)
-        correct_blurred = correct_blurred/np.max(correct_blurred)
+        correct_blurred = correct_blurred / np.max(correct_blurred)
 
         self.assertTrue(np.array_equal(result, correct))
         self.assertTrue(np.array_equal(result_blurred, correct_blurred))
@@ -330,7 +441,7 @@ class TestFunctionsLars(unittest.TestCase):
 
         self.assertTrue(np.array_equal(result, correct))
 
-        result = create_diff_mask(img1, img2, open_iter=0, squaring=True, max_square=1/4)
+        result = create_diff_mask(img1, img2, open_iter=0, squaring=True, max_square=1 / 4)
         correct = np.array(img1 > 1)
 
         self.assertTrue(np.array_equal(result, correct))
@@ -381,7 +492,26 @@ class TestFunctionsLars(unittest.TestCase):
         self.assertEqual(result, correct)
 
     def test_find_lines(self):
-        pass
+        """
+        There is probably a better way to test this.
+        """
+
+        n = 1000
+        img = np.zeros((n, n))
+        img[100:200, 200:400] = 1
+        img[400:550, 300:400] = 1
+        lines2 = np.zeros((5, 1, 4), dtype=int)
+        lines2[0, 0, :] = np.array([200, 187, 200, 112])
+        lines2[1, 0, :] = np.array([300, 537, 300, 412])
+        lines2[2, 0, :] = np.array([399, 187, 399, 112])
+        lines2[3, 0, :] = np.array([212, 100, 362, 100])
+        lines2[4, 0, :] = np.array([212, 199, 387, 199])
+
+        x_lines, y_lines, lines, edges = find_lines(img, blur=10, low_thres_edges=0.1, high_thres_edges=2.5,
+                                                    angle_res=np.pi / 180, line_thres=1, min_len_lines=1 / 15,
+                                                    max_line_gap=1 / 50)
+
+        self.assertTrue(np.array_equal(lines, lines2))
 
     def test_calculate_angles(self):
         lines = np.zeros((7, 1, 4))
@@ -394,13 +524,87 @@ class TestFunctionsLars(unittest.TestCase):
         lines[6, 0, :] = np.array([23, 399, 433, 93])
 
         result = calculate_angles(lines)
-        a = np.arctan((93-399)/(433-23)) + np.pi
-        correct = np.array([np.pi/4, np.pi/2, np.pi*3/4, np.pi/4, np.pi*3/4, 0, a])
+        a = np.arctan((93 - 399) / (433 - 23)) + np.pi
+        correct = np.array([np.pi / 4, np.pi / 2, np.pi * 3 / 4, np.pi / 4, np.pi * 3 / 4, 0, a])
 
         self.assertTrue(np.array_equal(result, correct))
 
     def test_combine_and_constraint_lines(self):
-        pass
+        x_lines2 = np.array([15, 35, 55, 25, 45, 65])
+        y_lines2 = np.array([15, 35, 55, 15, 35, 55])
+        lines2 = np.zeros((6, 1, 4), dtype=int)
+        lines2[0, 0, :] = np.array([10, 10, 20, 20])
+        lines2[1, 0, :] = np.array([30, 30, 40, 40])
+        lines2[2, 0, :] = np.array([50, 50, 60, 60])
+        lines2[3, 0, :] = np.array([20, 10, 30, 20])
+        lines2[4, 0, :] = np.array([40, 30, 50, 40])
+        lines2[5, 0, :] = np.array([60, 50, 70, 60])
+        angle_lines2 = np.zeros(6) + np.pi / 4
+        mid_milling_site = 50
+        img = np.zeros((100, 100))
+        img_shape = img.shape
+        x_lines, y_lines, lines, angle_lines = combine_and_constraint_lines(x_lines2, y_lines2, lines2, angle_lines2,
+                                                                            mid_milling_site, img_shape,
+                                                                            x_width_constraint=1, y_width_constraint=1,
+                                                                            angle_constraint=np.pi / 100,
+                                                                            max_dist=1 / 9, max_diff_angle=np.pi / 10)
+
+        # x_lines_correct = np.array([20, 40, 60])
+        # y_lines_correct = np.array([15, 35, 55])
+        lines_correct = np.zeros((3, 1, 4), dtype=int)
+        lines_correct[0, 0, :] = np.array([15, 10, 25, 20])
+        lines_correct[1, 0, :] = np.array([35, 30, 45, 40])
+        lines_correct[2, 0, :] = np.array([55, 50, 65, 60])
+
+        self.assertTrue(np.array_equal(lines, lines_correct))
+
+        x_lines, y_lines, lines, angle_lines = combine_and_constraint_lines(x_lines2, y_lines2, lines2, angle_lines2,
+                                                                            mid_milling_site, img_shape,
+                                                                            x_width_constraint=1, y_width_constraint=1,
+                                                                            angle_constraint=np.pi / 100,
+                                                                            max_dist=1 / 11, max_diff_angle=np.pi / 10)
+
+        lines_correct = np.zeros((6, 1, 4), dtype=int)
+        lines_correct[0, 0, :] = np.array([10, 10, 20, 20])
+        lines_correct[1, 0, :] = np.array([30, 30, 40, 40])
+        lines_correct[2, 0, :] = np.array([50, 50, 60, 60])
+        lines_correct[3, 0, :] = np.array([20, 10, 30, 20])
+        lines_correct[4, 0, :] = np.array([40, 30, 50, 40])
+        lines_correct[5, 0, :] = np.array([60, 50, 70, 60])
+
+        self.assertTrue(np.array_equal(lines, lines_correct))
+
+        x_lines, y_lines, lines, angle_lines = combine_and_constraint_lines(x_lines2, y_lines2, lines2, angle_lines2,
+                                                                            mid_milling_site, img_shape,
+                                                                            x_width_constraint=1, y_width_constraint=1/2,
+                                                                            angle_constraint=np.pi / 100,
+                                                                            max_dist=1 / 9, max_diff_angle=np.pi / 10)
+
+        lines_correct = np.zeros((2, 1, 4), dtype=int)
+        lines_correct[0, 0, :] = np.array([35, 30, 45, 40])
+        lines_correct[1, 0, :] = np.array([55, 50, 65, 60])
+
+        self.assertTrue(np.array_equal(lines, lines_correct))
+
+        x_lines2 = np.array([15, 35, 55, 25, 45, 65])
+        y_lines2 = np.array([15, 35, 55, 15, 35, 55])
+        lines2 = np.zeros((6, 1, 4), dtype=int)
+        lines2[0, 0, :] = np.array([10, 10, 20, 20])
+        lines2[1, 0, :] = np.array([10, 10, 10, 20])
+        lines2[2, 0, :] = np.array([50, 50, 50, 60])
+        lines2[3, 0, :] = np.array([50, 50, 52, 60])
+        lines2[4, 0, :] = np.array([30, 30, 30, 40])
+        lines2[5, 0, :] = np.array([30, 30, 35, 40])
+        angle_lines2 = calculate_angles(lines2)
+        mid_milling_site = 50
+        img = np.zeros((100, 100))
+        img_shape = img.shape
+        x_lines, y_lines, lines, angle_lines = combine_and_constraint_lines(x_lines2, y_lines2, lines2, angle_lines2,
+                                                                            mid_milling_site, img_shape,
+                                                                            x_width_constraint=1, y_width_constraint=1,
+                                                                            angle_constraint=np.pi / 100,
+                                                                            max_dist=1 / 9, max_diff_angle=np.pi / 10)
+
 
     def test_group_single_lines(self):
         pass
@@ -420,7 +624,7 @@ class TestFunctionsLars(unittest.TestCase):
         lines2[3, 0, :] = np.array([20, 10, 30, 20])
         lines2[4, 0, :] = np.array([40, 30, 50, 40])
         lines2[5, 0, :] = np.array([60, 50, 70, 60])
-        angle_lines2 = np.zeros(n) + np.pi/4
+        angle_lines2 = np.zeros(n) + np.pi / 4
 
         img = np.zeros((100, 100))
         img_shape = img.shape
@@ -429,7 +633,7 @@ class TestFunctionsLars(unittest.TestCase):
 
         correct = np.zeros((100, 100), dtype=bool)
         for i in range(correct.shape[1]):
-            correct[i, i:i+11] = True
+            correct[i, i:i + 11] = True
 
         overlap = np.sum(result & correct) / np.sum(result | correct)
 
@@ -455,7 +659,7 @@ class TestFunctionsLars(unittest.TestCase):
         lines2[4, 0, :] = np.array([30, 30, 35, 40])
         lines2[5, 0, :] = np.array([40, 50, 45, 60])
         angle_lines2 = np.zeros(n)
-        angle_lines2[:3] = np.pi/2
+        angle_lines2[:3] = np.pi / 2
         angle_lines2[3:] = np.arctan(2)
 
         img = np.zeros((100, 100))
@@ -465,8 +669,8 @@ class TestFunctionsLars(unittest.TestCase):
         correct = np.zeros((100, 100), dtype=bool)
         e = 0
         for i in range(img_shape[1]):
-            correct[i, 10:15+int(e)] = True
-            e += 1/2
+            correct[i, 10:15 + int(e)] = True
+            e += 1 / 2
 
         overlap = np.sum(result & correct) / np.sum(result | correct)
 
@@ -540,7 +744,7 @@ class TestFunctionsLars(unittest.TestCase):
         mask3 = np.zeros((n, n), dtype=bool)
 
         for i in range(20):
-            mask1[20+i, 20+i:30+i] = True
+            mask1[20 + i, 20 + i:30 + i] = True
         mask2[:, 30:40] = True
         mask3[:, 20:40] = True
 
@@ -565,7 +769,7 @@ class TestFunctionsLars(unittest.TestCase):
         ran = np.zeros(n, dtype=bool)
         ran[20:50] = True
         for i in range(30):
-            correct[i+20, :] = (np.arange(n) + i + 20) * ran
+            correct[i + 20, :] = (np.arange(n) + i + 20) * ran
         correct[0, 0] = 1
 
         self.assertTrue(np.array_equal(correct, result))
@@ -576,10 +780,10 @@ class TestFunctionsLars(unittest.TestCase):
         mid_x = 50
         for i in range(mask.shape[0]):
             for j in range(mask.shape[1]):
-                mask[i, j] = (i-mid_y)**2+(j-mid_x)**2 <= r**2
+                mask[i, j] = (i - mid_y) ** 2 + (j - mid_x) ** 2 <= r ** 2
 
         result, extent = create_masked_img(img, mask, cropping=False)
-        correct = img*mask
+        correct = img * mask
         correct[0, 0] = 1
 
         self.assertTrue(np.array_equal(result, correct))
@@ -636,6 +840,7 @@ class TestFunctionsLars(unittest.TestCase):
 
     def test_detect_blobs(self):
         pass
+
 
 if __name__ == '__main__':
     unittest.main()

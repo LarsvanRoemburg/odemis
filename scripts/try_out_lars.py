@@ -94,7 +94,7 @@ if __name__ == '__main__':
     max_slices = 30
     cropping = False  # if true, the last images will be cropped to only the mask
 
-    for nnn in np.arange(2, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+    for nnn in np.arange(13, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
         print("dataset nr. {}".format(nnn + 1))
         print(data_paths_before[nnn])
         print(data_paths_after[nnn])
@@ -135,8 +135,8 @@ if __name__ == '__main__':
         x_lines2, y_lines2, lines2, angle_lines2 = combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines,
                                                                                 mid_milling_site,
                                                                                 img_after_blurred.shape, max_dist=1/30)
-
-        groups = group_single_lines(x_lines2, y_lines2, lines2, angle_lines2, max_distance=img_after.shape[1] / 30)
+        md = 30
+        groups = group_single_lines(x_lines2, y_lines2, lines2, angle_lines2, max_distance=img_after.shape[1] / md, max_angle_diff=np.pi/8)
 
         after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2, mid_milling_site,
                                                 max_dist=img_after.shape[1] / 5,
@@ -145,9 +145,9 @@ if __name__ == '__main__':
         show_line_detection_steps(img_after, img_after_blurred, edges, lines, lines2, after_grouping)
 
         mask_lines = create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_after.shape,
-                                      all_groups=False)
+                                      all_groups=False, inv_max_dist=md)
         mask_lines_all = create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_after.shape,
-                                          all_groups=True)
+                                          all_groups=True, inv_max_dist=md)
 
         # calculating the difference between the two images and creating a mask
         mask = create_diff_mask(img_before_blurred, img_after_blurred, squaring=False)
@@ -155,7 +155,7 @@ if __name__ == '__main__':
         mask2 = create_diff_mask(img_before_blurred, img_after_blurred, squaring=True)
         masked_img2, extents2 = create_masked_img(img_after, mask2, cropping)
 
-        mask_combined, combined = combine_masks(mask, mask_lines, mask_lines_all, squaring=False)
+        mask_combined, combined = combine_masks(mask, mask_lines, mask_lines_all, squaring=True)
 
         masked_img, extents = create_masked_img(img_after, mask_combined, cropping)
 
@@ -171,9 +171,9 @@ if __name__ == '__main__':
 
         # setting a threshold for the image_after within the mask
         binary_end_1b, binary_end_result1 = create_binary_end_image(mask_combined, masked_img, threshold_end,
-                                                                    open_close=True)
+                                                                    open_close=True, rid_of_back_signal=False)
         binary_end_2b, binary_end_result2 = create_binary_end_image(mask2, masked_img2, threshold_end, open_close=True,
-                                                                    rid_of_back_signal=True)
+                                                                    rid_of_back_signal=False)
 
         # fig, ax = plt.subplots(ncols=2)
         # ax[0].imshow(binary_end_result1)
@@ -195,14 +195,3 @@ if __name__ == '__main__':
         gc.collect()
 
         print("Successful!\n")
-
-        class aut:
-            __int__(self, val1=3, )
-
-
-        test = automated_roi_detection(val1=5)
-        test.function1()
-        test.function2()
-        test.output
-
-

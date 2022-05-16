@@ -493,26 +493,32 @@ def get_image(data_paths_before, data_paths_after, channel_before, channel_after
         if magni == 1:
             img_before, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos,
                                                                          milling_x_pos,
-                                                                         channel_before, num_slices=max_slices_focus)
+                                                                         channel_before, num_slices=max_slices_focus,
+                                                                         mode=proj_mode)
             img_after, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos - shift[0],
                                                                         milling_x_pos - shift[1], channel_after,
-                                                                        num_slices=max_slices_focus)
+                                                                        num_slices=max_slices_focus,
+                                                                        mode=proj_mode)
         elif magni > 1:
             img_before, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos,
                                                                          milling_x_pos,
-                                                                         channel_before, num_slices=max_slices_focus)
+                                                                         channel_before, num_slices=max_slices_focus,
+                                                                         mode=proj_mode)
             img_after, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling,
                                                                         (milling_y_pos - shift[0]) / magni,
                                                                         (milling_x_pos - shift[1]) / magni,
                                                                         channel_after,
-                                                                        num_slices=max_slices_focus)
+                                                                        num_slices=max_slices_focus,
+                                                                        mode=proj_mode)
         elif magni < 1:
             img_before, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos * magni,
                                                                          milling_x_pos * magni, channel_before,
-                                                                         num_slices=max_slices_focus)
+                                                                         num_slices=max_slices_focus,
+                                                                         mode=proj_mode)
             img_after, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos - shift[0],
                                                                         milling_x_pos - shift[1], channel_after,
-                                                                        num_slices=max_slices_focus)
+                                                                        num_slices=max_slices_focus,
+                                                                        mode=proj_mode)
     elif mode == 'projection':
         # reading the data and just make a z-projection
         data_before_milling = tiff.read_data(data_paths_before)
@@ -782,12 +788,16 @@ def combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines, mid_milli
 
     # for each line there exists a spot on num_lines_present, if set to 0 it is discarded
     num_lines_present = np.ones(lines.shape[0])
-    for i in range(lines.shape[0]):
-        x1 = x_lines[i]
-        y1 = y_lines[i]
+    lines2 = np.array(lines)
+    x_lines2 = np.array(x_lines)
+    y_lines2 = np.array(y_lines)
+    angle_lines2 = np.array(angle_lines)
+    for i in range(lines2.shape[0]):
+        x1 = x_lines2[i]
+        y1 = y_lines2[i]
 
         # for each line, apply the constraints and if it does not pass, discard it
-        if (angle_lines[i] <= angle_constraint) | (angle_lines[i] >= (np.pi - angle_constraint)) | \
+        if (angle_lines2[i] <= angle_constraint) | (angle_lines2[i] >= (np.pi - angle_constraint)) | \
                 (x1 < (mid_milling_site - x_constraint)) | \
                 (x1 > (mid_milling_site + x_constraint)) | \
                 (y1 > (img_shape[0] / 2 + y_constraint)) | (y1 < (img_shape[0] / 2 - y_constraint)):
@@ -797,11 +807,11 @@ def combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines, mid_milli
             # If passed, look at all the other lines (that are still present) and calculate the distance between them
             # and the difference in angle. If two lines are suited for merging, they are merged and put together at
             # one spot in num_lines_present.
-            for j in range(lines.shape[0]):
+            for j in range(lines2.shape[0]):
                 if (i != j) & (num_lines_present[i] >= 1) & (num_lines_present[j] >= 1):
                     # calculating the distance and angle difference
-                    dist = np.sqrt((x_lines[i] - x_lines[j]) ** 2 + (y_lines[i] - y_lines[j]) ** 2)
-                    diff_angle = np.abs(angle_lines[i] - angle_lines[j])
+                    dist = np.sqrt((x_lines2[i] - x_lines2[j]) ** 2 + (y_lines2[i] - y_lines2[j]) ** 2)
+                    diff_angle = np.abs(angle_lines2[i] - angle_lines2[j])
 
                     # checking merging conditions
                     if (dist <= max_dist_for_merge) & (diff_angle <= max_diff_angle):
@@ -810,20 +820,20 @@ def combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines, mid_milli
                             # Calculating the average end points, middle points and angles of the two weighted lines
                             # and put it directly in the lines array. With weighted I mean how many lines are already
                             # put at the two spots which we will merge.
-                            lines[i][0][0] = (lines[i][0][0] * num_lines_present[i] + lines[j][0][0] *
-                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
-                            lines[i][0][1] = (lines[i][0][1] * num_lines_present[i] + lines[j][0][1] *
-                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
-                            lines[i][0][2] = (lines[i][0][2] * num_lines_present[i] + lines[j][0][2] *
-                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
-                            lines[i][0][3] = (lines[i][0][3] * num_lines_present[i] + lines[j][0][3] *
-                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
-                            angle_lines[i] = (angle_lines[i] * num_lines_present[i]
-                                              + angle_lines[j] * num_lines_present[j]) / \
-                                             (num_lines_present[i] + num_lines_present[j])
-                            x_lines[i] = (x_lines[i] * num_lines_present[i] + x_lines[j] * num_lines_present[
+                            lines2[i][0][0] = (lines2[i][0][0] * num_lines_present[i] + lines2[j][0][0] *
+                                               num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            lines2[i][0][1] = (lines2[i][0][1] * num_lines_present[i] + lines2[j][0][1] *
+                                               num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            lines2[i][0][2] = (lines2[i][0][2] * num_lines_present[i] + lines2[j][0][2] *
+                                               num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            lines2[i][0][3] = (lines2[i][0][3] * num_lines_present[i] + lines2[j][0][3] *
+                                               num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            angle_lines2[i] = (angle_lines2[i] * num_lines_present[i]
+                                               + angle_lines2[j] * num_lines_present[j]) / \
+                                              (num_lines_present[i] + num_lines_present[j])
+                            x_lines2[i] = (x_lines2[i] * num_lines_present[i] + x_lines2[j] * num_lines_present[
                                 j]) / (num_lines_present[i] + num_lines_present[j])
-                            y_lines[i] = (y_lines[i] * num_lines_present[i] + y_lines[j] * num_lines_present[
+                            y_lines2[i] = (y_lines2[i] * num_lines_present[i] + y_lines2[j] * num_lines_present[
                                 j]) / (num_lines_present[i] + num_lines_present[j])
 
                             num_lines_present[i] = num_lines_present[i] + num_lines_present[j]
@@ -832,31 +842,31 @@ def combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines, mid_milli
                             # Calculating the average end points, middle points and angles of the weighted lines and
                             # put it directly in the lines array. With weighted I mean how many lines are already
                             # put at the two spots which we will merge.
-                            lines[j][0][0] = (lines[i][0][0] * num_lines_present[i] + lines[j][0][0] *
-                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
-                            lines[j][0][1] = (lines[i][0][1] * num_lines_present[i] + lines[j][0][1] *
-                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
-                            lines[j][0][2] = (lines[i][0][2] * num_lines_present[i] + lines[j][0][2] *
-                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
-                            lines[j][0][3] = (lines[i][0][3] * num_lines_present[i] + lines[j][0][3] *
-                                              num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
-                            angle_lines[j] = (angle_lines[i] * num_lines_present[i]
-                                              + angle_lines[j] * num_lines_present[j]) / \
-                                             (num_lines_present[i] + num_lines_present[j])
-                            x_lines[j] = (x_lines[i] * num_lines_present[i] + x_lines[j] * num_lines_present[
+                            lines2[j][0][0] = (lines2[i][0][0] * num_lines_present[i] + lines2[j][0][0] *
+                                               num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            lines2[j][0][1] = (lines2[i][0][1] * num_lines_present[i] + lines2[j][0][1] *
+                                               num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            lines2[j][0][2] = (lines2[i][0][2] * num_lines_present[i] + lines2[j][0][2] *
+                                               num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            lines2[j][0][3] = (lines2[i][0][3] * num_lines_present[i] + lines2[j][0][3] *
+                                               num_lines_present[j]) / (num_lines_present[i] + num_lines_present[j])
+                            angle_lines2[j] = (angle_lines2[i] * num_lines_present[i]
+                                               + angle_lines2[j] * num_lines_present[j]) / \
+                                              (num_lines_present[i] + num_lines_present[j])
+                            x_lines2[j] = (x_lines2[i] * num_lines_present[i] + x_lines2[j] * num_lines_present[
                                 j]) / (num_lines_present[i] + num_lines_present[j])
-                            y_lines[j] = (y_lines[i] * num_lines_present[i] + y_lines[j] * num_lines_present[
+                            y_lines2[j] = (y_lines2[i] * num_lines_present[i] + y_lines2[j] * num_lines_present[
                                 j]) / (num_lines_present[i] + num_lines_present[j])
                             num_lines_present[j] = num_lines_present[i] + num_lines_present[j]
                             num_lines_present[i] = 0
 
     # here select for the lines that are left after combining
-    lines = lines[num_lines_present > 0]
-    x_lines = x_lines[num_lines_present > 0]
-    y_lines = y_lines[num_lines_present > 0]
-    angle_lines = angle_lines[num_lines_present > 0]
+    lines2 = lines2[num_lines_present > 0]
+    x_lines2 = x_lines2[num_lines_present > 0]
+    y_lines2 = y_lines2[num_lines_present > 0]
+    angle_lines2 = angle_lines2[num_lines_present > 0]
 
-    return x_lines, y_lines, lines, angle_lines
+    return x_lines2, y_lines2, lines2, angle_lines2
 
 
 def group_single_lines(x_lines, y_lines, lines, angle_lines, max_distance, max_angle_diff=np.pi / 12):
@@ -903,10 +913,128 @@ def group_single_lines(x_lines, y_lines, lines, angle_lines, max_distance, max_a
         if not set_in_group:
             groups.append([i])
 
-    for i in range(len(groups)):
-        groups[i] = np.unique(groups[i])
-
     return groups
+
+
+def combine_groups(groups, x_lines, y_lines, angle_lines, min_dist, max_dist, max_angle_diff):
+    size_groups_combined = np.zeros((len(groups), len(groups)))
+    # here we look at each combination of groups and if they have the right conditions, if so, the combined size of
+    # the two groups will be put in the output array.
+    for i in range(len(groups)):
+        for j in np.arange(i + 1, len(groups), 1):
+            if np.abs(np.mean(angle_lines[groups[i]]) - np.mean(angle_lines[groups[j]])) <= max_angle_diff:
+                angle_mean = (np.mean(angle_lines[groups[i]]) * len(groups[i])
+                              + np.mean(angle_lines[groups[j]]) * len(groups[j])) / \
+                             (len(groups[i]) + len(groups[j]))
+
+                x1 = np.mean(x_lines[groups[i]])
+                y1 = np.mean(y_lines[groups[i]])
+                x2 = np.mean(x_lines[groups[j]])
+                y2 = np.mean(y_lines[groups[j]])
+                x3 = (y2 - y1 + np.tan(angle_mean + np.pi / 2 + 1e-10) * x1 - np.tan(angle_mean + 1e-10) * x2) / \
+                     (np.tan(angle_mean + np.pi / 2 + 1e-10) - np.tan(angle_mean + 1e-10))
+                y3 = np.tan(angle_mean + 1e-10) * (x3 - x2) + y2
+                dist = np.sqrt((x3 - x1) ** 2 + (y3 - y1) ** 2)
+
+                if min_dist < dist < max_dist:
+                    size_groups_combined[i, j] = (len(groups[i]) + len(groups[j]))
+
+    return size_groups_combined
+
+
+def combine_biggest_groups(biggest, groups, x_lines, y_lines, angle_lines, min_dist, max_angle_diff):
+    merge_big_groups = np.zeros((len(biggest[0]), len(biggest[0])))
+
+    # calculate the mean angles and positions of both groups and see if they can be combined
+    for k in range(len(biggest[0])):
+        for m in np.arange(k + 1, len(biggest[0]), 1):
+            len_k0 = len(groups[biggest[0][k]])
+            len_k1 = len(groups[biggest[1][k]])
+            len_m0 = len(groups[biggest[0][m]])
+            len_m1 = len(groups[biggest[1][m]])
+
+            angle_k = (np.mean(angle_lines[groups[biggest[0][k]]]) * len_k0
+                       + np.mean(angle_lines[groups[biggest[1][k]]]) * len_k1) / \
+                      (len_k0 + len_k1)
+            angle_m = (np.mean(angle_lines[groups[biggest[0][m]]]) * len_m0
+                       + np.mean(angle_lines[groups[biggest[1][m]]]) * len_m1) / \
+                      (len_m0 + len_m1)
+            x_k = (np.mean(x_lines[groups[biggest[0][k]]]) * len_k0
+                   + np.mean(x_lines[groups[biggest[1][k]]]) * len_k1) / \
+                  (len_k0 + len_k1)
+            y_k = (np.mean(y_lines[groups[biggest[0][k]]]) * len_k0
+                   + np.mean(y_lines[groups[biggest[1][k]]]) * len_k1) / \
+                  (len_k0 + len_k1)
+            x_m = (np.mean(x_lines[groups[biggest[0][m]]]) * len_m0
+                   + np.mean(x_lines[groups[biggest[1][m]]]) * len_m1) / \
+                  (len_m0 + len_m1)
+            y_m = (np.mean(y_lines[groups[biggest[0][m]]]) * len_m0
+                   + np.mean(y_lines[groups[biggest[1][m]]]) * len_m1) / \
+                  (len_m0 + len_m1)
+            distance = np.sqrt((x_k - x_m) ** 2 + (y_k - y_m) ** 2)
+
+            if (np.abs(angle_k - angle_m) <= max_angle_diff) & (distance <= min_dist):
+                merge_big_groups[k, m] = len_k0 + len_k1 + \
+                                         len_m0 + len_m1
+
+    return merge_big_groups
+
+
+def last_group_selection(groups, biggest, merge_big_groups, x_lines, x_pos_mil, angle_lines):
+    after_grouping = []
+    if np.max(merge_big_groups) > 0:
+        biggest2 = np.where(merge_big_groups == np.max(merge_big_groups))
+        if len(biggest2[0]) > 1:
+            # if there is again no clear winner, take the biggest2 which is the closest to the x-position of
+            # the milling site.
+            r = 0
+            d = np.inf
+            for i in range(len(biggest2[0])):
+                x_mean = (np.mean(x_lines[groups[biggest[0][biggest2[0][i]]]]) + np.mean(
+                    x_lines[groups[biggest[1][biggest2[0][i]]]]) + np.mean(
+                    x_lines[groups[biggest[0][biggest2[1][i]]]]) + np.mean(
+                    x_lines[groups[biggest[1][biggest2[1][i]]]])) / 4
+                angle_mean = (np.mean(angle_lines[groups[biggest[0][biggest2[0][i]]]]) + np.mean(
+                    angle_lines[groups[biggest[1][biggest2[0][i]]]]) + np.mean(
+                    angle_lines[groups[biggest[0][biggest2[1][i]]]]) + np.mean(
+                    angle_lines[groups[biggest[1][biggest2[1][i]]]])) / 4
+
+                result = np.abs(x_mean - x_pos_mil) * np.abs(angle_mean-np.pi/2)**(1/3)
+                if result < d:
+                    r = i
+                    d = result
+
+            for s in range(2):
+                for z in range(2):
+                    for x in groups[biggest[s][biggest2[z][r]]]:
+                        after_grouping.append(x)
+        else:
+            for s in range(2):
+                for z in range(2):
+                    for x in groups[biggest[s]][biggest2[z][0]]:
+                        after_grouping.append(x)
+            # groups[biggest[0][biggest2[0]]]
+            # groups[biggest[1][biggest2[0]]]
+            # groups[biggest[0][biggest2[1]]]
+            # groups[biggest[1][biggest2[1]]]
+
+    else:
+        # if no biggest groups merge, chose the one closest to the x_pos of the milling site.
+        r = 0
+        d = np.inf
+        for i in range(len(biggest[0])):
+            x_mean = (np.mean(x_lines[groups[biggest[0][i]]]) + np.mean(x_lines[groups[biggest[1][i]]])) / 2
+            if np.abs(x_mean - x_pos_mil) < d:
+                r = i
+                d = np.abs(x_mean - x_pos_mil)
+
+        # adding the lines from the biggest group to the output
+        for i in groups[biggest[0][r]]:
+            after_grouping.append(i)
+        for j in groups[biggest[1][r]]:
+            after_grouping.append(j)
+
+    return after_grouping
 
 
 def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, x_pos_mil, min_dist, max_dist,
@@ -939,116 +1067,53 @@ def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, x_pos_mil, min
     if len(groups) == 0:
         return np.array([])
 
-    size_groups_combined = np.zeros((len(groups), len(groups)))
-    # here we look at each combination of groups and if they have the right conditions, if so, the combined size of
-    # the two groups will be put in the output array.
-    for i in range(len(groups)):
-        for j in np.arange(i + 1, len(groups), 1):
-            if np.abs(np.mean(angle_lines[groups[i]]) - np.mean(angle_lines[groups[j]])) <= max_angle_diff:
-                angle_mean = (np.mean(angle_lines[groups[i]]) * len(groups[i])
-                              + np.mean(angle_lines[groups[j]]) * len(groups[j])) / \
-                             (len(groups[i]) + len(groups[j]))
-
-                x1 = np.mean(x_lines[groups[i]])
-                y1 = np.mean(y_lines[groups[i]])
-                x2 = np.mean(x_lines[groups[j]])
-                y2 = np.mean(y_lines[groups[j]])
-                x3 = (y2 - y1 + np.tan(angle_mean + np.pi / 2 + 1e-10) * x1 - np.tan(angle_mean + 1e-10) * x2) / \
-                     (np.tan(angle_mean + np.pi / 2 + 1e-10) - np.tan(angle_mean + 1e-10))
-                y3 = np.tan(angle_mean + 1e-10) * (x3 - x2) + y2
-                dist = np.sqrt((x3 - x1) ** 2 + (y3 - y1) ** 2)
-
-                if min_dist < dist < max_dist:
-                    size_groups_combined[i, j] = (len(groups[i]) + len(groups[j]))
+    size_groups_combined = combine_groups(groups, x_lines, y_lines, angle_lines, min_dist, max_dist, max_angle_diff)
 
     # if there are some groups combined, we search for the group which has the most lines in it (max size)
     if np.max(size_groups_combined) > 0:
         biggest = np.where(size_groups_combined == np.max(size_groups_combined))
 
-        after_grouping = []
         # if there are multiple combinations that have the max size, we try to combine those as well
         if len(biggest[0]) > 1:
-            merge_big_groups = np.zeros((len(biggest[0]), len(biggest[0])), dtype=bool)
-
-            # calculate the mean angles and positions of both groups and see if they can be combined
-            for k in range(len(biggest[0])):
-                for m in np.arange(k + 1, len(biggest[0]), 1):
-                    angle_k = (np.mean(angle_lines[groups[biggest[0][k]]]) * len(groups[biggest[0][k]])
-                               + np.mean(angle_lines[groups[biggest[1][k]]]) * len(groups[biggest[1][k]])) / \
-                              (len(groups[biggest[0][k]]) + len(groups[biggest[1][k]]))
-                    angle_m = (np.mean(angle_lines[groups[biggest[0][m]]]) * len(groups[biggest[0][m]])
-                               + np.mean(angle_lines[groups[biggest[1][m]]]) * len(groups[biggest[1][m]])) / \
-                              (len(groups[biggest[0][m]]) + len(groups[biggest[1][m]]))
-                    x_k = (np.mean(x_lines[groups[biggest[0][k]]]) * len(groups[biggest[0][k]])
-                           + np.mean(x_lines[groups[biggest[1][k]]]) * len(groups[biggest[1][k]])) / \
-                          (len(groups[biggest[0][k]]) + len(groups[biggest[1][k]]))
-                    y_k = (np.mean(y_lines[groups[biggest[0][k]]]) * len(groups[biggest[0][k]])
-                           + np.mean(y_lines[groups[biggest[1][k]]]) * len(groups[biggest[1][k]])) / \
-                          (len(groups[biggest[0][k]]) + len(groups[biggest[1][k]]))
-                    x_m = (np.mean(x_lines[groups[biggest[0][m]]]) * len(groups[biggest[0][m]])
-                           + np.mean(x_lines[groups[biggest[1][m]]]) * len(groups[biggest[1][m]])) / \
-                          (len(groups[biggest[0][m]]) + len(groups[biggest[1][m]]))
-                    y_m = (np.mean(y_lines[groups[biggest[0][m]]]) * len(groups[biggest[0][m]])
-                           + np.mean(y_lines[groups[biggest[1][m]]]) * len(groups[biggest[1][m]])) / \
-                          (len(groups[biggest[0][m]]) + len(groups[biggest[1][m]]))
-                    distance = np.sqrt((x_k - x_m) ** 2 + (y_k - y_m) ** 2)
-
-                    if (np.abs(angle_k - angle_m) <= max_angle_diff) & (distance <= min_dist):
-                        merge_big_groups[k, m] = True
-
-            print("total groups used: {}".format(np.sum(merge_big_groups)))
-
-            # if some biggest groups can be combined, find the biggest connection between all biggest groups
-            if np.sum(merge_big_groups) != 0:
-                groups2 = []
-                for x, y in np.array(np.where(merge_big_groups)).T:
-                    set_in_group2 = False
-                    for r in range(len(groups2)):
-                        if x in groups2[r] and y in groups2[r]:
-                            set_in_group2 = True
-                        elif x in groups2[r] and y not in groups2[r]:
-                            groups2[r].append(y)
-                            set_in_group2 = True
-                        elif y in groups2[r] and x not in groups2[r]:
-                            groups2[r].append(x)
-                            set_in_group2 = True
-                    if not set_in_group2:
-                        groups2.append([x, y])
-
-                b = 0
-                final_group = 0
-                # find the combination which is the biggest after merging the biggest groups
-                for r in range(len(groups2)):
-                    groups2[r] = np.unique(groups2[r])
-                    if len(groups2[r]) > b:
-                        b = len(groups2[r])
-                        final_group = r
-
-                # adding the lines from the biggest group to the output
-                for i in groups2[final_group]:
-                    for j in groups[biggest[0][i]]:
-                        after_grouping.append(j)
-                    for k in groups[biggest[1][i]]:
-                        after_grouping.append(k)
-
-            else:
-                # if no biggest groups merge, chose the one closest to the x_pos of the milling site.
-                r = 0
-                d = np.inf
-                for i in range(len(biggest[0])):
-                    x_mean = (np.mean(x_lines[groups[biggest[0][i]]]) + np.mean(x_lines[groups[biggest[1][i]]])) / 2
-                    if np.abs(x_mean - x_pos_mil) < d:
-                        r = i
-                        d = np.abs(x_mean - x_pos_mil)
-
-                # adding the lines from the biggest group to the output
-                for i in groups[biggest[0][r]]:
-                    after_grouping.append(i)
-                for j in groups[biggest[1][r]]:
-                    after_grouping.append(j)
+            merge_big_groups = combine_biggest_groups(biggest, groups, x_lines, y_lines, angle_lines, min_dist,
+                                                      max_angle_diff)
+            after_grouping = last_group_selection(groups, biggest, merge_big_groups, x_lines, x_pos_mil, angle_lines)
+        # if some biggest groups can be combined, find the biggest connection between all biggest groups
+        # if np.sum(merge_big_groups) != 0:
+        #     groups2 = []
+        #     for x, y in np.array(np.where(merge_big_groups)).T:
+        #         set_in_group2 = False
+        #         for r in range(len(groups2)):
+        #             if x in groups2[r] and y in groups2[r]:
+        #                 set_in_group2 = True
+        #             elif x in groups2[r] and y not in groups2[r]:
+        #                 groups2[r].append(y)
+        #                 set_in_group2 = True
+        #             elif y in groups2[r] and x not in groups2[r]:
+        #                 groups2[r].append(x)
+        #                 set_in_group2 = True
+        #         if not set_in_group2:
+        #             groups2.append([x, y])
+        #
+        #     b = 0
+        #     final_group = 0
+        #     # find the combination which is the biggest after merging the biggest groups
+        #     for r in range(len(groups2)):
+        #         groups2[r] = np.unique(groups2[r])
+        #         if len(groups2[r]) > b:
+        #             b = len(groups2[r])
+        #             final_group = r
+        #
+        #     # adding the lines from the biggest group to the output
+        #     for i in groups2[final_group]:
+        #         for j in groups[biggest[0][i]]:
+        #             after_grouping.append(j)
+        #         for k in groups[biggest[1][i]]:
+        #             after_grouping.append(k)
 
         else:  # there is only one group the biggest
             # adding the lines from the biggest group to the output
+            after_grouping = []
             for i in groups[biggest[0][0]]:
                 after_grouping.append(i)
             for j in groups[biggest[1][0]]:
@@ -1061,7 +1126,7 @@ def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, x_pos_mil, min
     return after_grouping
 
 
-def create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_shape, inv_max_dist=20,
+def create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, img_shape, inv_max_dist=30,
                      max_angle=np.pi / 8, all_groups=False):
     """
     Here a mask is created with the lines found in the line detection. The lines after grouping, are split into two
@@ -1077,6 +1142,7 @@ def create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, i
         img_shape (tuple):          The shape of the image after milling.
         inv_max_dist (int):         For grouping the lines in left and right, the lines within a group cannot have a
                                     bigger distance then img_shape[1]/inv_max_dist.
+                                    HAS TO BE THE "SAME" AS THE INVERSE OF MAX_DIST IN GROUP_SINGLE_LINES().
         max_angle (float):          The maximum difference in angles lines can have within a group.
         all_groups (bool):          If there are more than 2 groups outputted after grouping, you can decide to use
                                     the first two groups or all groups. If set to True, you use all groups, and you keep

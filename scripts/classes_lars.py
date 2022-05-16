@@ -153,7 +153,7 @@ class PreProcessingData:
         """
 
         if self.shift is not None:
-            # self.image_before, self.image_after = PreProcessingData.rescaling(self._og_image_before, self._og_image_after)
+            # self.image_before, self.image_after = PreProcessingData.rescaling(self._og_image_before, self._og_image_after, params=logbook)
             self.image_before_blurred = None
             self.image_after_blurred = None
             self.shift = None
