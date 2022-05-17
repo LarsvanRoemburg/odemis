@@ -351,7 +351,7 @@ def rescaling(img_before, img_after):
     #     return img_before, img_rescaled2, img_before.shape[0] / img_after.shape[0]
 
 
-def overlay(img_before, img_after, max_shift=5):
+def overlay(img_before, img_after, max_shift=4):
     """
     Shift the img_after in x and y position to have the best overlay with img_before.
     This is done with finding the maximum in a convolution.
@@ -379,11 +379,11 @@ def overlay(img_before, img_after, max_shift=5):
     conv = fftconvolve(img_before, img_after[::-1, ::-1])
 
     # max_shift constraints
-    if (int(conv.shape[0] / max_shift) > 0) & (max_shift > 1):
-        conv[:int(conv.shape[0] / max_shift), :] = 0
-        conv[-int(conv.shape[0] / max_shift):, :] = 0
-        conv[:, :int(conv.shape[1] / max_shift)] = 0
-        conv[:, -int(conv.shape[1] / max_shift):] = 0
+    if (int(conv.shape[0] / 4 + img_before.shape[0] / max_shift) > 0) & (max_shift > 1):
+        conv[:int(conv.shape[0] / 4 + img_before.shape[0] / max_shift), :] = 0
+        conv[-int(conv.shape[0] / 4 + img_before.shape[0] / max_shift):, :] = 0
+        conv[:, :int(conv.shape[1] / 4 + img_before.shape[1] / max_shift)] = 0
+        conv[:, -int(conv.shape[1] / 4 + img_before.shape[1] / max_shift):] = 0
 
     # calculating the shift in y and x with finding the maximum in the convolution
     shift = np.where(conv == np.max(conv))
@@ -869,7 +869,7 @@ def combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines, mid_milli
     return x_lines2, y_lines2, lines2, angle_lines2
 
 
-def group_single_lines(x_lines, y_lines, lines, angle_lines, max_distance, max_angle_diff=np.pi / 12):
+def group_single_lines(x_lines, y_lines, lines, angle_lines, max_distance, max_angle_diff=np.pi / 8):
     """
     Here individual lines are grouped together based on their angle and perpendicular distance between each other.
     The lines here are regarded as lines with infinite length so that always the perpendicular distance between lines
@@ -1011,7 +1011,7 @@ def last_group_selection(groups, biggest, merge_big_groups, x_lines, x_pos_mil, 
         else:
             for s in range(2):
                 for z in range(2):
-                    for x in groups[biggest[s]][biggest2[z][0]]:
+                    for x in groups[biggest[s][biggest2[z][0]]]:
                         after_grouping.append(x)
             # groups[biggest[0][biggest2[0]]]
             # groups[biggest[1][biggest2[0]]]
@@ -1522,12 +1522,11 @@ def detect_blobs(binary_end_result, min_circ=0, max_circ=1, min_area=0, max_area
     return key_points, yxr
 
 
-def show_line_detection_steps(img_after, img_after_blurred, edges, lines, lines2, after_grouping):
+def show_line_detection_steps(img_after_blurred, edges, lines, lines2, after_grouping):
     """
     Here the line detection steps are shown in images for visualization of the process.
 
     Parameters:
-        img_after (ndarray):            The image after milling on which the line detection is executed.
         img_after_blurred (ndarray):    The image after milling blurred and normalized.
         edges (ndarray):                The edges image from the canny function in find_lines().
         lines (ndarray):                The lines before combine_and_constraint_lines().
@@ -1575,7 +1574,7 @@ def show_line_detection_steps(img_after, img_after_blurred, edges, lines, lines2
 
         # plotting the images
         fig, ax = plt.subplots(ncols=2, nrows=3)
-        ax[0, 0].imshow(img_after)
+        ax[0, 0].imshow(img_after_blurred)
         ax[0, 0].set_title('img_after')
         ax[0, 1].imshow(edges)
         ax[0, 1].set_title('the edges')
