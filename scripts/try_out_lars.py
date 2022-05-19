@@ -92,7 +92,7 @@ if __name__ == '__main__':
     threshold_end = 0.25
     blur = 25
     max_slices = 30
-    cropping = False  # if true, the last images will be cropped to only the mask
+    cropping = True  # if true, the last images will be cropped to only the mask
 
     # for nnn in np.arange(13, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
     #     print("dataset nr. {}".format(nnn + 1))
@@ -196,7 +196,7 @@ if __name__ == '__main__':
     #
     #     print("Successful!\n")
     #
-    for nnn in np.arange(17, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+    for nnn in np.arange(7, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
         print("dataset nr. {}".format(nnn + 1))
         print(data_paths_before[nnn])
         print(data_paths_after[nnn])
@@ -209,10 +209,7 @@ if __name__ == '__main__':
 
         img_before, img_after, img_before_blurred, img_after_blurred = pre_processing_data(img_before, img_after)
 
-        mask_diff, mask_combined, combined = get_mask(img_before_blurred, img_after_blurred, max_dist_s=1 / 30,
-                                                      min_dist_c=1 / 25,
-                                                      max_dist_c=1 / 5,
-                                                      max_angle_diff=np.pi / 8, plotting_lines=True)
+        mask_diff, mask_combined, combined = get_mask(img_before_blurred, img_after_blurred, plotting_lines=True)
 
         masked_img, extents, binary_end, binary_end_without, key_points, yxr = analyze_data(img_after, mask_combined,
                                                                                             cropping, threshold_end)
@@ -221,7 +218,7 @@ if __name__ == '__main__':
                                                                                                   threshold_end)
 
         plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask_diff, masked_img,
-                         masked_img2, binary_end_without, binary_end_without2, cropping, extents, extents2)
+                         masked_img2, binary_end, binary_end2, cropping, extents, extents2)
 
         del img_before, img_after, img_before_blurred, img_after_blurred, \
             mask_combined, mask_diff, masked_img, masked_img2, binary_end, \

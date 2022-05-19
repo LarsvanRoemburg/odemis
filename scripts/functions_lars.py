@@ -380,16 +380,25 @@ def overlay(img_before, img_after, max_shift=4):
 
     # max_shift constraints
     if (int(conv.shape[0] / 4 + img_before.shape[0] / max_shift) > 0) & (max_shift > 1):
-        conv[:int(conv.shape[0] / 4 + img_before.shape[0] / max_shift), :] = 0
-        conv[-int(conv.shape[0] / 4 + img_before.shape[0] / max_shift):, :] = 0
-        conv[:, :int(conv.shape[1] / 4 + img_before.shape[1] / max_shift)] = 0
-        conv[:, -int(conv.shape[1] / 4 + img_before.shape[1] / max_shift):] = 0
+        m = np.min(conv) - 1
+        conv[:int(conv.shape[0] / 4 + img_before.shape[0] / max_shift), :] = m
+        conv[-int(conv.shape[0] / 4 + img_before.shape[0] / max_shift):, :] = m
+        conv[:, :int(conv.shape[1] / 4 + img_before.shape[1] / max_shift)] = m
+        conv[:, -int(conv.shape[1] / 4 + img_before.shape[1] / max_shift):] = m
 
     # calculating the shift in y and x with finding the maximum in the convolution
-    shift = np.where(conv == np.max(conv))
-    shift = np.asarray(shift)
-    shift[0] = shift[0] - (conv.shape[0] - 1) / 2
-    shift[1] = shift[1] - (conv.shape[1] - 1) / 2
+    if np.max(conv) > 0:
+        shift = np.where(conv == np.max(conv))
+        shift = np.asarray(shift)
+        shift[0] = shift[0] - (conv.shape[0] - 1) / 2
+        shift[1] = shift[1] - (conv.shape[1] - 1) / 2
+    else:
+        logging.warning("In overlay(): No maximum was found in the convolution. No shift is applied.")
+        shift = np.array([[0], [0]])
+    # else:
+    #     # just do no shift
+    #     logging.warning("In overlay(): No maximum was found in the convolution. No shift is applied.")
+    #     shift = np.array([[0], [0]])
 
     img_after = img_after + mean_after
 
@@ -1416,8 +1425,8 @@ def create_binary_end_image(mask, masked_img, threshold=0.25, open_close=True, r
     return binary_end_result, binary_end_result_without
 
 
-def detect_blobs(binary_end_result, min_circ=0, max_circ=1, min_area=0, max_area=np.inf, min_in=0, max_in=1,
-                 min_con=0, max_con=1, plotting=False):
+def detect_blobs(binary_end_result, min_circ=0, max_circ=1.01, min_area=0, max_area=np.inf, min_in=0, max_in=1.01,
+                 min_con=0, max_con=1.01, plotting=False):
     """
     Here blob detection from opencv is performed on a binary image (or an image with intensities ranging from 0 to 1).
     You can set the constraints of the blob detection with the parameters of this function.
@@ -1454,7 +1463,7 @@ def detect_blobs(binary_end_result, min_circ=0, max_circ=1, min_area=0, max_area
     params.filterByConvexity = False
 
     # circularity
-    if (min_circ == 0) & (max_circ == 1):
+    if (min_circ == 0) & (max_circ == 1.01):
         params.filterByCircularity = False
     else:
         params.filterByCircularity = True
@@ -1470,7 +1479,7 @@ def detect_blobs(binary_end_result, min_circ=0, max_circ=1, min_area=0, max_area
         params.maxArea = max_area
 
     # inertia
-    if (min_in == 0) & (max_in == 1):
+    if (min_in == 0) & (max_in == 1.01):
         params.filterByInertia = False
     else:
         params.filterByInertia = True
@@ -1478,7 +1487,7 @@ def detect_blobs(binary_end_result, min_circ=0, max_circ=1, min_area=0, max_area
         params.maxInertiaRatio = max_in
 
     # convexity
-    if (min_con == 0) & (max_con == 1):
+    if (min_con == 0) & (max_con == 1.01):
         params.filterByConvexity = False
     else:
         params.filterByConvexity = True
@@ -1496,25 +1505,28 @@ def detect_blobs(binary_end_result, min_circ=0, max_circ=1, min_area=0, max_area
     key_points = detector.detect(im)
 
     # reading out the key_points and putting them in a numpy array
-    yxr = np.zeros((len(key_points), 3), dtype=int)
-    for u in range(len(key_points)):
-        yxr[u, 1] = int(key_points[u].pt[0])
-        yxr[u, 0] = int(key_points[u].pt[1])
-        yxr[u, 2] = int(key_points[u].size / 2)  # the size is the diameter
-
+    if len(key_points) != 0:
+        yxr = np.zeros((len(key_points), 3), dtype=int)
+        for u in range(len(key_points)):
+            yxr[u, 1] = int(key_points[u].pt[0])
+            yxr[u, 0] = int(key_points[u].pt[1])
+            yxr[u, 2] = int(key_points[u].size / 2)  # the size is the diameter
+    else:
+        yxr = np.array([])
     # Draw them if specified
     if plotting:
         fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(10, 4))
-        for center_y, center_x, radius in zip(yxr[:, 0], yxr[:, 1], yxr[:, 2]):
-            circy, circx = circle_perimeter(center_y, center_x, radius,
-                                            shape=im.shape)
-            im[circy, circx] = (220, 20, 20, 255)
-            im[circy + 1, circx] = (220, 20, 20, 255)
-            im[circy, circx + 1] = (220, 20, 20, 255)
-            im[circy + 1, circx + 1] = (220, 20, 20, 255)
-            im[circy - 1, circx] = (220, 20, 20, 255)
-            im[circy, circx - 1] = (220, 20, 20, 255)
-            im[circy - 1, circx - 1] = (220, 20, 20, 255)
+        if len(key_points) != 0:
+            for center_y, center_x, radius in zip(yxr[:, 0], yxr[:, 1], yxr[:, 2]):
+                circy, circx = circle_perimeter(center_y, center_x, radius,
+                                                shape=im.shape)
+                im[circy, circx] = (220, 20, 20, 255)
+                im[circy + 1, circx] = (220, 20, 20, 255)
+                im[circy, circx + 1] = (220, 20, 20, 255)
+                im[circy + 1, circx + 1] = (220, 20, 20, 255)
+                im[circy - 1, circx] = (220, 20, 20, 255)
+                im[circy, circx - 1] = (220, 20, 20, 255)
+                im[circy - 1, circx - 1] = (220, 20, 20, 255)
 
         ax.imshow(im)
         plt.show()

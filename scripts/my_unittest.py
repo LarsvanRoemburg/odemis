@@ -10,7 +10,7 @@ from odemis.dataio import tiff
 from scripts.functions_lars import find_focus_z_slice_and_outlier_cutoff, rescaling, overlay, \
     z_projection_and_outlier_cutoff, blur_and_norm, create_diff_mask, find_x_or_y_pos_milling_site, calculate_angles, \
     create_line_mask, combine_masks, create_masked_img, create_binary_end_image, get_image, find_lines, \
-    combine_and_constraint_lines
+    combine_and_constraint_lines, group_single_lines, couple_groups_of_lines, detect_blobs
 from try_out_lars import data_paths_before, data_paths_after, data_paths_true_masks
 from copy import deepcopy
 
@@ -75,9 +75,9 @@ class TestFunctionsLars(unittest.TestCase):
             else:
                 img, result = find_focus_z_slice_and_outlier_cutoff(data,
                                                                     milling_pos_y=self.correct_milling_pos_y[i] *
-                                                                    self.correct_scaling[i],
+                                                                                  self.correct_scaling[i],
                                                                     milling_pos_x=self.correct_milling_pos_x[i] *
-                                                                    self.correct_scaling[i],
+                                                                                  self.correct_scaling[i],
                                                                     which_channel=self.ch_before[i],
                                                                     square_width=1 / 4,
                                                                     num_slices=5, outlier_cutoff=99, mode='max')
@@ -270,6 +270,39 @@ class TestFunctionsLars(unittest.TestCase):
 
             b_result, shift = overlay(a, b, 1)
             correct_shift = np.array([[50 - int(i * 10)], [0]])
+
+            self.assertTrue(np.array_equal(shift, correct_shift))
+
+        for i in range(10):
+            n = 200
+            a = np.zeros((n, n))
+            b = np.zeros((n, n))
+            a[int(n / 2), int(n / 2)] = 1
+            b[int(i * n / 10), int(n / 2)] = 1
+
+            b_result, shift = overlay(a, b, 4)
+            if i < 3 or i > 7:
+                correct_shift = np.array([[0], [0]])
+            else:
+                correct_shift = np.array([[int(n / 2 - i * n / 10)], [0]])
+
+            self.assertTrue(np.array_equal(shift, correct_shift))
+
+        n = 101
+        a = np.zeros((n, n))
+
+        a[50, 50] = 1
+        for j in range(7):
+            b = np.zeros((n, n))
+            for i in range(3):
+                b[int(i * 10 + (j + 1) * 10), 50] = 1
+
+            b_result, shift = overlay(a, b, 1)
+            t = np.array([10, 20, 30])
+            e = np.min(np.abs(t + j * 10 - 50))
+            if j > 4:
+                e = -e
+            correct_shift = np.array([[e], [0]])
 
             self.assertTrue(np.array_equal(shift, correct_shift))
 
@@ -498,6 +531,7 @@ class TestFunctionsLars(unittest.TestCase):
         """
         There is probably a better way to test this.
         """
+        # image = np.zeros((n, n))
         # for points in lines:
         #     # Extracted points nested in the list
         #     x1, y1, x2, y2 = points[0]
@@ -512,17 +546,24 @@ class TestFunctionsLars(unittest.TestCase):
 
         # dit aanpassen naar middelpunten en angles en dan testen met een tolerantie
 
-        lines2[0, 0, :] = np.array([200, 187, 200, 112])
-        lines2[1, 0, :] = np.array([300, 537, 300, 412])
-        lines2[2, 0, :] = np.array([399, 187, 399, 112])
-        lines2[3, 0, :] = np.array([212, 100, 362, 100])
-        lines2[4, 0, :] = np.array([212, 199, 387, 199])
+        lines2[0, 0, :] = np.array([200, 200, 200, 100])
+        lines2[1, 0, :] = np.array([300, 550, 300, 400])
+        lines2[2, 0, :] = np.array([400, 200, 400, 100])
+        lines2[3, 0, :] = np.array([200, 100, 400, 100])
+        lines2[4, 0, :] = np.array([200, 200, 400, 200])
+
+        x_lines2 = (lines2.T[2] / 2 + lines2.T[0] / 2).T.reshape((len(lines2),))
+        y_lines2 = (lines2.T[3] / 2 + lines2.T[1] / 2).T.reshape((len(lines2),))
+        angle_lines2 = calculate_angles(lines2)
 
         x_lines, y_lines, lines, edges = find_lines(img, blur=10, low_thres_edges=0.1, high_thres_edges=2.5,
                                                     angle_res=np.pi / 180, line_thres=1, min_len_lines=1 / 15,
                                                     max_line_gap=1 / 50)
+        angle_lines = calculate_angles(lines)
 
-        self.assertTrue(np.array_equal(lines, lines2))
+        self.assertTrue(np.sum(np.abs(x_lines - x_lines2)) < n / 20)
+        self.assertTrue(np.sum(np.abs(y_lines - y_lines2)) < n / 20)
+        self.assertTrue(np.sum(np.abs(angle_lines - angle_lines2)) < np.pi / 10 * len(lines))
 
         x_lines, y_lines, lines, edges = find_lines(img, blur=10, low_thres_edges=0.1, high_thres_edges=2.5,
                                                     angle_res=np.pi / 180, line_thres=1, min_len_lines=1 / 2,
@@ -537,12 +578,18 @@ class TestFunctionsLars(unittest.TestCase):
         x_lines, y_lines, lines, edges = find_lines(img, blur=10, low_thres_edges=0.1, high_thres_edges=2.5,
                                                     angle_res=np.pi / 180, line_thres=1, min_len_lines=1 / 4,
                                                     max_line_gap=1 / 10)
+        angle_lines = calculate_angles(lines)
 
         lines2 = np.zeros((2, 1, 4), dtype=int)
-        lines2[0, 0, :] = np.array([212, 100, 637, 100])
-        lines2[1, 0, :] = np.array([212, 199, 637, 199])
+        lines2[0, 0, :] = np.array([200, 100, 650, 100])
+        lines2[1, 0, :] = np.array([200, 200, 650, 200])
+        x_lines2 = (lines2.T[2] / 2 + lines2.T[0] / 2).T.reshape((len(lines2),))
+        y_lines2 = (lines2.T[3] / 2 + lines2.T[1] / 2).T.reshape((len(lines2),))
+        angle_lines2 = calculate_angles(lines2)
 
-        self.assertTrue(np.array_equal(lines, lines2))
+        self.assertTrue(np.sum(np.abs(x_lines - x_lines2)) < n / 20)
+        self.assertTrue(np.sum(np.abs(y_lines - y_lines2)) < n / 20)
+        self.assertTrue(np.sum(np.abs(angle_lines - angle_lines2)) < np.pi / 10 * len(lines))
 
         x_lines, y_lines, lines, edges = find_lines(img, blur=10, low_thres_edges=0.1, high_thres_edges=2.5,
                                                     angle_res=np.pi / 180, line_thres=1, min_len_lines=1 / 4,
@@ -706,10 +753,126 @@ class TestFunctionsLars(unittest.TestCase):
         self.assertTrue(np.array_equal(lines, lines_correct))
 
     def test_group_single_lines(self):
-        pass
+        x_lines2 = np.array([15, 35, 55, 25, 45, 65])
+        y_lines2 = np.array([15, 35, 55, 15, 35, 55])
+        lines2 = np.zeros((6, 1, 4), dtype=int)
+        lines2[0, 0, :] = np.array([10, 10, 20, 20])
+        lines2[1, 0, :] = np.array([30, 30, 40, 40])
+        lines2[2, 0, :] = np.array([50, 50, 60, 60])
+        lines2[3, 0, :] = np.array([20, 10, 30, 20])
+        lines2[4, 0, :] = np.array([40, 30, 50, 40])
+        lines2[5, 0, :] = np.array([60, 50, 70, 60])
+        angle_lines2 = np.zeros(6) + np.pi / 4
+
+        groups = group_single_lines(x_lines2, y_lines2, lines2, angle_lines2, max_distance=5)
+
+        groups_correct = [[0, 1, 2], [3, 4, 5]]
+
+        self.assertTrue(np.array_equal(groups, groups_correct))
+
+        x_lines2 = np.array([12.5, 10, 35, 25, 20, 65])
+        y_lines2 = np.array([15, 15, 35, 15, 15, 65])
+        lines2 = np.zeros((6, 1, 4), dtype=int)
+        lines2[0, 0, :] = np.array([10, 10, 15, 20])
+        lines2[1, 0, :] = np.array([10, 10, 10, 20])
+        lines2[2, 0, :] = np.array([30, 30, 40, 40])
+        lines2[3, 0, :] = np.array([20, 10, 30, 20])
+        lines2[4, 0, :] = np.array([20, 10, 20, 20])
+        lines2[5, 0, :] = np.array([60, 50, 70, 80])
+        angle_lines2 = calculate_angles(lines2)
+
+        groups = group_single_lines(x_lines2, y_lines2, lines2, angle_lines2, max_distance=8, max_angle_diff=np.pi/4)
+
+        groups_correct = [[0, 1], [2, 3, 4], [5]]
+
+        self.assertTrue(np.array_equal(groups, groups_correct))
+
+        groups = group_single_lines(x_lines2, y_lines2, lines2, angle_lines2, max_distance=5, max_angle_diff=np.pi/4)
+
+        groups_correct = [[0, 1], [2, 4], [3, 4], [5]]
+
+        self.assertTrue(np.array_equal(groups, groups_correct))
+
+        groups = group_single_lines(x_lines2, y_lines2, lines2, angle_lines2, max_distance=5)
+
+        groups_correct = [[0], [1], [2], [3], [4], [5]]
+
+        self.assertTrue(np.array_equal(groups, groups_correct))
+
+        groups = group_single_lines(x_lines2, y_lines2, lines2, angle_lines2, max_distance=8)
+
+        groups_correct = [[0], [1], [2, 3], [4], [5]]
+
+        self.assertTrue(np.array_equal(groups, groups_correct))
 
     def test_couple_groups_of_lines(self):
-        pass
+        x_lines2 = np.array([15, 35, 55, 25, 45, 65])
+        y_lines2 = np.array([15, 35, 55, 15, 35, 55])
+        lines2 = np.zeros((6, 1, 4), dtype=int)
+        lines2[0, 0, :] = np.array([10, 10, 20, 20])
+        lines2[1, 0, :] = np.array([30, 30, 40, 40])
+        lines2[2, 0, :] = np.array([50, 50, 60, 60])
+        lines2[3, 0, :] = np.array([20, 10, 30, 20])
+        lines2[4, 0, :] = np.array([40, 30, 50, 40])
+        lines2[5, 0, :] = np.array([60, 50, 70, 60])
+        angle_lines2 = np.zeros(6) + np.pi / 4
+        groups = [[0, 1, 2], [3, 4, 5]]
+
+        after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2, x_pos_mil=50, min_dist=5, max_dist=10,
+                                                max_angle_diff=np.pi / 8)
+
+        after_grouping_correct = np.arange(6)
+        self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
+
+        after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2, x_pos_mil=50, min_dist=1,
+                                                max_dist=5,
+                                                max_angle_diff=np.pi / 8)
+
+        after_grouping_correct = np.array([])
+        self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
+
+        groups = [[0, 4, 2], [3, 1, 5]]
+        after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2, x_pos_mil=50, min_dist=2, max_dist=10,
+                                                max_angle_diff=np.pi / 8)
+
+        after_grouping_correct = np.arange(6)
+        self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
+
+        after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2, x_pos_mil=50, min_dist=5,
+                                                max_dist=10,
+                                                max_angle_diff=np.pi / 8)
+
+        after_grouping_correct = np.array([])
+        self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
+
+        x_lines2 = np.array([10, 10, 10, 22.5, 32.5, 42.5])
+        y_lines2 = np.array([15, 35, 55, 15, 35, 55])
+        lines2 = np.zeros((6, 1, 4), dtype=int)
+        lines2[0, 0, :] = np.array([10, 10, 10, 20])
+        lines2[1, 0, :] = np.array([10, 30, 10, 40])
+        lines2[2, 0, :] = np.array([10, 50, 10, 60])
+        lines2[3, 0, :] = np.array([20, 10, 25, 20])
+        lines2[4, 0, :] = np.array([30, 30, 35, 40])
+        lines2[5, 0, :] = np.array([40, 50, 45, 60])
+        angle_lines2 = np.zeros(6)
+        angle_lines2[:3] = np.pi / 2
+        angle_lines2[3:] = np.arctan(2)
+
+        groups = [[0, 1, 2], [3, 4, 5]]
+
+        after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2, x_pos_mil=50, min_dist=15,
+                                                max_dist=35,
+                                                max_angle_diff=np.pi / 6)
+
+        after_grouping_correct = np.arange(6)
+        self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
+
+        after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2, x_pos_mil=50, min_dist=15,
+                                                max_dist=35,
+                                                max_angle_diff=np.pi / 9)
+
+        after_grouping_correct = np.array([])
+        self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
 
     def test_create_line_mask(self):
         n = 6
@@ -938,7 +1101,43 @@ class TestFunctionsLars(unittest.TestCase):
         self.assertTrue(np.array_equal(correct, result))
 
     def test_detect_blobs(self):
-        pass
+        n = 100
+        img = np.zeros((n, n))
+        img[10:21, 20:31] = 1
+        img[40:51, 40:61] = 1
+        img[20:26, 70:91] = 1
+
+        keypoints, yxr = detect_blobs(img, min_circ=0, max_circ=1.01, min_area=0, max_area=np.inf, min_in=0,
+                                      max_in=1.01, min_con=0, max_con=1.01, plotting=False)
+        yxr_correct = np.array([[45, 50, 9], [22, 80, 6], [15, 25, 5]])
+
+        self.assertTrue(np.array_equal(yxr, yxr_correct))
+
+        keypoints, yxr = detect_blobs(img, min_circ=0.85, max_circ=1, min_area=0, max_area=np.inf, min_in=0,
+                                      max_in=1.01, min_con=0, max_con=1.01, plotting=False)
+
+        yxr_correct = np.array([])
+        self.assertTrue(np.array_equal(yxr, yxr_correct))
+
+        keypoints, yxr = detect_blobs(img, min_circ=0, max_circ=1.01, min_area=110, max_area=np.inf, min_in=0,
+                                      max_in=1.01, min_con=0, max_con=1.01, plotting=False)
+        yxr_correct = np.array([[45, 50, 9]])
+
+        self.assertTrue(np.array_equal(yxr, yxr_correct))
+
+        keypoints, yxr = detect_blobs(img, min_circ=0, max_circ=1.01, min_area=0, max_area=np.inf, min_in=0.5,
+                                      max_in=1.01, min_con=0, max_con=1.01, plotting=False)
+        yxr_correct = np.array([[15, 25, 5]])
+
+        self.assertTrue(np.array_equal(yxr, yxr_correct))
+
+        keypoints, yxr = detect_blobs(img, min_circ=0, max_circ=1.01, min_area=0, max_area=np.inf, min_in=0.2,
+                                      max_in=1.01, min_con=0, max_con=1.01, plotting=False)
+        yxr_correct = np.array([[45, 50, 9], [15, 25, 5]])
+
+        self.assertTrue(np.array_equal(yxr, yxr_correct))
+
+
 
 
 if __name__ == '__main__':
