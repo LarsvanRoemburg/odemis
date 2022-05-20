@@ -951,7 +951,7 @@ def combine_groups(groups, x_lines, y_lines, angle_lines, min_dist, max_dist, ma
     return size_groups_combined
 
 
-def combine_biggest_groups(biggest, groups, x_lines, y_lines, angle_lines, min_dist, max_angle_diff):
+def combine_biggest_groups(biggest, groups, x_lines, y_lines, angle_lines, max_dist, max_angle_diff):
     merge_big_groups = np.zeros((len(biggest[0]), len(biggest[0])))
 
     # calculate the mean angles and positions of both groups and see if they can be combined
@@ -982,7 +982,7 @@ def combine_biggest_groups(biggest, groups, x_lines, y_lines, angle_lines, min_d
                   (len_m0 + len_m1)
             distance = np.sqrt((x_k - x_m) ** 2 + (y_k - y_m) ** 2)
 
-            if (np.abs(angle_k - angle_m) <= max_angle_diff) & (distance <= min_dist):
+            if (np.abs(angle_k - angle_m) <= max_angle_diff) & (distance <= max_dist):
                 merge_big_groups[k, m] = len_k0 + len_k1 + \
                                          len_m0 + len_m1
 
@@ -1008,6 +1008,7 @@ def last_group_selection(groups, biggest, merge_big_groups, x_lines, x_pos_mil, 
                     angle_lines[groups[biggest[0][biggest2[1][i]]]]) + np.mean(
                     angle_lines[groups[biggest[1][biggest2[1][i]]]])) / 4
 
+                # FIXME if angles are np.pi/2 it does not work
                 result = np.abs(x_mean - x_pos_mil) * np.abs(angle_mean-np.pi/2)**(1/3)
                 if result < d:
                     r = i
@@ -1043,7 +1044,7 @@ def last_group_selection(groups, biggest, merge_big_groups, x_lines, x_pos_mil, 
         for j in groups[biggest[1][r]]:
             after_grouping.append(j)
 
-    return after_grouping
+    return np.unique(after_grouping)
 
 
 def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, x_pos_mil, min_dist, max_dist,
@@ -1084,8 +1085,8 @@ def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, x_pos_mil, min
 
         # if there are multiple combinations that have the max size, we try to combine those as well
         if len(biggest[0]) > 1:
-            merge_big_groups = combine_biggest_groups(biggest, groups, x_lines, y_lines, angle_lines, min_dist,
-                                                      max_angle_diff)
+            merge_big_groups = combine_biggest_groups(biggest, groups, x_lines, y_lines, angle_lines, max_dist=min_dist,
+                                                      max_angle_diff=max_angle_diff)
             after_grouping = last_group_selection(groups, biggest, merge_big_groups, x_lines, x_pos_mil, angle_lines)
         # if some biggest groups can be combined, find the biggest connection between all biggest groups
         # if np.sum(merge_big_groups) != 0:

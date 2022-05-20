@@ -10,7 +10,8 @@ from odemis.dataio import tiff
 from scripts.functions_lars import find_focus_z_slice_and_outlier_cutoff, rescaling, overlay, \
     z_projection_and_outlier_cutoff, blur_and_norm, create_diff_mask, find_x_or_y_pos_milling_site, calculate_angles, \
     create_line_mask, combine_masks, create_masked_img, create_binary_end_image, get_image, find_lines, \
-    combine_and_constraint_lines, group_single_lines, couple_groups_of_lines, detect_blobs
+    combine_and_constraint_lines, group_single_lines, couple_groups_of_lines, detect_blobs, combine_groups, \
+    combine_biggest_groups, last_group_selection
 from try_out_lars import data_paths_before, data_paths_after, data_paths_true_masks
 from copy import deepcopy
 
@@ -528,15 +529,12 @@ class TestFunctionsLars(unittest.TestCase):
         self.assertEqual(result, correct)
 
     def test_find_lines(self):
-        """
-        There is probably a better way to test this.
-        """
         # image = np.zeros((n, n))
-        # for points in lines:
+        # for points in lines2:
         #     # Extracted points nested in the list
         #     x1, y1, x2, y2 = points[0]
         #     # Draw the lines joining the points on the original image
-        #     cv2.line(image, (x1, y1), (x2, y2), 255, 2)
+        #     cv2.line(image, (x1, y1), (x2, y2), 255, 1)
 
         n = 1000
         img = np.zeros((n, n))
@@ -781,13 +779,13 @@ class TestFunctionsLars(unittest.TestCase):
         lines2[5, 0, :] = np.array([60, 50, 70, 80])
         angle_lines2 = calculate_angles(lines2)
 
-        groups = group_single_lines(x_lines2, y_lines2, lines2, angle_lines2, max_distance=8, max_angle_diff=np.pi/4)
+        groups = group_single_lines(x_lines2, y_lines2, lines2, angle_lines2, max_distance=8, max_angle_diff=np.pi / 4)
 
         groups_correct = [[0, 1], [2, 3, 4], [5]]
 
         self.assertTrue(np.array_equal(groups, groups_correct))
 
-        groups = group_single_lines(x_lines2, y_lines2, lines2, angle_lines2, max_distance=5, max_angle_diff=np.pi/4)
+        groups = group_single_lines(x_lines2, y_lines2, lines2, angle_lines2, max_distance=5, max_angle_diff=np.pi / 4)
 
         groups_correct = [[0, 1], [2, 4], [3, 4], [5]]
 
@@ -805,6 +803,219 @@ class TestFunctionsLars(unittest.TestCase):
 
         self.assertTrue(np.array_equal(groups, groups_correct))
 
+    def test_combine_groups(self):
+        x_lines2 = np.array([15, 35, 55, 25, 45, 65, 35, 55, 75])
+        y_lines2 = np.array([15, 35, 55, 15, 35, 55, 15, 35, 55])
+        lines2 = np.zeros((9, 1, 4), dtype=int)
+        lines2[0, 0, :] = np.array([10, 10, 20, 20])
+        lines2[1, 0, :] = np.array([30, 30, 40, 40])
+        lines2[2, 0, :] = np.array([50, 50, 60, 60])
+        lines2[3, 0, :] = np.array([20, 10, 30, 20])
+        lines2[4, 0, :] = np.array([40, 30, 50, 40])
+        lines2[5, 0, :] = np.array([60, 50, 70, 60])
+        lines2[6, 0, :] = np.array([30, 10, 40, 20])
+        lines2[7, 0, :] = np.array([50, 30, 60, 40])
+        lines2[8, 0, :] = np.array([70, 50, 80, 60])
+        angle_lines2 = np.zeros(9) + np.pi / 4
+
+        groups = [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
+        size_groups_combined = combine_groups(groups, x_lines2, y_lines2, angle_lines2, min_dist=5, max_dist=10,
+                                              max_angle_diff=np.pi / 8)
+        size_groups_combined_correct = np.zeros((3, 3))
+        size_groups_combined_correct[0, 1] = 6
+        size_groups_combined_correct[1, 2] = 6
+
+        self.assertTrue(np.array_equal(size_groups_combined, size_groups_combined_correct))
+
+        lines2[6, 0, :] = np.array([35, 10, 45, 20])
+        lines2[7, 0, :] = np.array([55, 30, 65, 40])
+        lines2[8, 0, :] = np.array([75, 50, 85, 60])
+        x_lines2 = np.array([15, 35, 55, 25, 45, 65, 40, 60, 80])
+        y_lines2 = np.array([15, 35, 55, 15, 35, 55, 15, 35, 55])
+
+        size_groups_combined = combine_groups(groups, x_lines2, y_lines2, angle_lines2, min_dist=5, max_dist=12,
+                                              max_angle_diff=np.pi / 8)
+        size_groups_combined_correct = np.zeros((3, 3))
+        size_groups_combined_correct[0, 1] = 6
+        size_groups_combined_correct[1, 2] = 6
+
+        self.assertTrue(np.array_equal(size_groups_combined, size_groups_combined_correct))
+
+        size_groups_combined = combine_groups(groups, x_lines2, y_lines2, angle_lines2, min_dist=5, max_dist=10,
+                                              max_angle_diff=np.pi / 8)
+        size_groups_combined_correct = np.zeros((3, 3))
+        size_groups_combined_correct[0, 1] = 6
+
+        self.assertTrue(np.array_equal(size_groups_combined, size_groups_combined_correct))
+
+        size_groups_combined = combine_groups(groups, x_lines2, y_lines2, angle_lines2, min_dist=8, max_dist=12,
+                                              max_angle_diff=np.pi / 8)
+        size_groups_combined_correct = np.zeros((3, 3))
+        size_groups_combined_correct[1, 2] = 6
+
+        self.assertTrue(np.array_equal(size_groups_combined, size_groups_combined_correct))
+
+    def test_combine_biggest_groups(self):
+        x_lines2 = np.array([15, 35, 55, 25, 45, 65, 35, 55, 75])
+        y_lines2 = np.array([15, 35, 55, 15, 35, 55, 15, 35, 55])
+        lines2 = np.zeros((9, 1, 4), dtype=int)
+        lines2[0, 0, :] = np.array([10, 10, 20, 20])
+        lines2[1, 0, :] = np.array([30, 30, 40, 40])
+        lines2[2, 0, :] = np.array([50, 50, 60, 60])
+        lines2[3, 0, :] = np.array([20, 10, 30, 20])
+        lines2[4, 0, :] = np.array([40, 30, 50, 40])
+        lines2[5, 0, :] = np.array([60, 50, 70, 60])
+        lines2[6, 0, :] = np.array([30, 10, 40, 20])
+        lines2[7, 0, :] = np.array([50, 30, 60, 40])
+        lines2[8, 0, :] = np.array([70, 50, 80, 60])
+        angle_lines2 = np.zeros(9) + np.pi / 4
+
+        groups = [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
+        size_groups_combined = np.zeros((3, 3))
+        size_groups_combined[0, 1] = 6
+        size_groups_combined[1, 2] = 6
+        biggest = np.where(size_groups_combined == np.max(size_groups_combined))
+
+        merge_big_groups = combine_biggest_groups(biggest, groups, x_lines2, y_lines2, angle_lines2, max_dist=5,
+                                                  max_angle_diff=np.pi/8)
+
+        merge_big_groups_correct = np.zeros((2, 2))
+
+        self.assertTrue(np.array_equal(merge_big_groups, merge_big_groups_correct))
+
+        merge_big_groups = combine_biggest_groups(biggest, groups, x_lines2, y_lines2, angle_lines2, max_dist=10,
+                                                  max_angle_diff=np.pi/8)
+
+        merge_big_groups_correct = np.zeros((2, 2))
+        merge_big_groups_correct[0, 1] = 12
+
+        self.assertTrue(np.array_equal(merge_big_groups, merge_big_groups_correct))
+
+        x_lines2 = np.array([10, 10, 10, 22.5, 32.5, 42.5, 35, 55, 75])
+        y_lines2 = np.array([15, 35, 55, 15, 35, 55, 15, 35, 55])
+        lines2 = np.zeros((9, 1, 4), dtype=int)
+        lines2[0, 0, :] = np.array([10, 10, 10, 20])
+        lines2[1, 0, :] = np.array([10, 30, 10, 40])
+        lines2[2, 0, :] = np.array([10, 50, 10, 60])
+        lines2[3, 0, :] = np.array([20, 10, 25, 20])
+        lines2[4, 0, :] = np.array([30, 30, 35, 40])
+        lines2[5, 0, :] = np.array([40, 50, 45, 60])
+        lines2[6, 0, :] = np.array([30, 10, 40, 20])
+        lines2[7, 0, :] = np.array([50, 30, 60, 40])
+        lines2[8, 0, :] = np.array([70, 50, 80, 60])
+        angle_lines2 = calculate_angles(lines2)
+
+        groups = [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
+        size_groups_combined = np.zeros((3, 3))
+        size_groups_combined[0, 1] = 6
+        size_groups_combined[1, 2] = 6
+        biggest = np.where(size_groups_combined == np.max(size_groups_combined))
+
+        merge_big_groups = combine_biggest_groups(biggest, groups, x_lines2, y_lines2, angle_lines2, max_dist=25,
+                                                  max_angle_diff=np.pi/8)
+
+        merge_big_groups_correct = np.zeros((2, 2))
+        merge_big_groups_correct[0, 1] = 12
+
+        self.assertTrue(np.array_equal(merge_big_groups, merge_big_groups_correct))
+
+        merge_big_groups = combine_biggest_groups(biggest, groups, x_lines2, y_lines2, angle_lines2, max_dist=25,
+                                                  max_angle_diff=np.pi / 10)
+
+        merge_big_groups_correct = np.zeros((2, 2))
+
+        self.assertTrue(np.array_equal(merge_big_groups, merge_big_groups_correct))
+
+    def test_last_group_selection(self):
+        # x_lines2 = np.array([15, 35, 55, 25, 45, 65, 35, 55, 75])
+        # y_lines2 = np.array([15, 35, 55, 15, 35, 55, 15, 35, 55])
+        # lines2 = np.zeros((9, 1, 4), dtype=int)
+        # lines2[0, 0, :] = np.array([10, 10, 20, 20])
+        # lines2[1, 0, :] = np.array([30, 30, 40, 40])
+        # lines2[2, 0, :] = np.array([50, 50, 60, 60])
+        # lines2[3, 0, :] = np.array([20, 10, 30, 20])
+        # lines2[4, 0, :] = np.array([40, 30, 50, 40])
+        # lines2[5, 0, :] = np.array([60, 50, 70, 60])
+        # lines2[6, 0, :] = np.array([30, 10, 40, 20])
+        # lines2[7, 0, :] = np.array([50, 30, 60, 40])
+        # lines2[8, 0, :] = np.array([70, 50, 80, 60])
+        # angle_lines2 = np.zeros(9) + np.pi / 4
+        #
+        # groups = [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
+        # size_groups_combined = np.zeros((3, 3))
+        # size_groups_combined[0, 1] = 6
+        # size_groups_combined[1, 2] = 6
+        # biggest = np.where(size_groups_combined == np.max(size_groups_combined))
+        # merge_big_groups = np.zeros((2, 2))
+        # merge_big_groups[0, 1] = 12
+        #
+        # after_grouping = last_group_selection(groups, biggest, merge_big_groups, x_lines2, x_pos_mil=40,
+        #                                       angle_lines=angle_lines2)
+        #
+        # after_grouping_correct = np.arange(9)
+        #
+        # self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
+        #
+        # merge_big_groups = np.zeros((2, 2))
+        #
+        # after_grouping = last_group_selection(groups, biggest, merge_big_groups, x_lines2, x_pos_mil=40,
+        #                                       angle_lines=angle_lines2)
+        #
+        # after_grouping_correct = np.arange(6)
+        #
+        # self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
+        #
+        # after_grouping = last_group_selection(groups, biggest, merge_big_groups, x_lines2, x_pos_mil=70,
+        #                                       angle_lines=angle_lines2)
+        #
+        # after_grouping_correct = np.arange(6)+3
+        #
+        # self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
+
+        x_lines2 = np.array([10, 10, 10, 20, 20, 20, 40, 40, 40, 50, 50, 50, 15, 15, 15, 45, 45, 45])
+        y_lines2 = np.array([15, 35, 55, 15, 35, 55, 15, 35, 55, 15, 35, 55, 15, 35, 55, 15, 35, 55])
+        lines2 = np.zeros((18, 1, 4), dtype=int)
+        lines2[0, 0, :] = np.array([10, 10, 10, 20])
+        lines2[1, 0, :] = np.array([10, 30, 10, 40])
+        lines2[2, 0, :] = np.array([10, 50, 10, 60])
+        lines2[3, 0, :] = np.array([20, 10, 20, 20])
+        lines2[4, 0, :] = np.array([20, 30, 20, 40])
+        lines2[5, 0, :] = np.array([20, 50, 20, 60])
+        lines2[6, 0, :] = np.array([40, 10, 40, 20])
+        lines2[7, 0, :] = np.array([40, 30, 40, 40])
+        lines2[8, 0, :] = np.array([40, 50, 40, 60])
+        lines2[9, 0, :] = np.array([50, 10, 50, 20])
+        lines2[10, 0, :] = np.array([50, 30, 50, 40])
+        lines2[11, 0, :] = np.array([50, 50, 50, 60])
+        lines2[12, 0, :] = np.array([15, 10, 15, 20])
+        lines2[13, 0, :] = np.array([15, 30, 15, 40])
+        lines2[14, 0, :] = np.array([15, 50, 15, 60])
+        lines2[15, 0, :] = np.array([45, 10, 45, 20])
+        lines2[16, 0, :] = np.array([45, 30, 45, 40])
+        lines2[17, 0, :] = np.array([45, 50, 45, 60])
+        angle_lines2 = np.zeros(18) + np.pi / 2
+
+        groups = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11], [12, 13, 14], [15, 16, 17]]
+        size_groups_combined = np.zeros((6, 6))
+        size_groups_combined[0, 4] = 6
+        size_groups_combined[1, 4] = 6
+        size_groups_combined[2, 5] = 6
+        size_groups_combined[3, 5] = 6
+        biggest = np.where(size_groups_combined == np.max(size_groups_combined))
+        merge_big_groups = np.zeros((4, 4))
+        merge_big_groups[0, 1] = 12
+        merge_big_groups[2, 3] = 12
+
+        after_grouping = last_group_selection(groups, biggest, merge_big_groups, x_lines2, x_pos_mil=70,
+                                              angle_lines=angle_lines2)
+
+        after_grouping_correct = np.arange(9)+3
+        after_grouping_correct[-3:] += 6
+
+        self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
+
+
+
     def test_couple_groups_of_lines(self):
         x_lines2 = np.array([15, 35, 55, 25, 45, 65])
         y_lines2 = np.array([15, 35, 55, 15, 35, 55])
@@ -818,21 +1029,21 @@ class TestFunctionsLars(unittest.TestCase):
         angle_lines2 = np.zeros(6) + np.pi / 4
         groups = [[0, 1, 2], [3, 4, 5]]
 
-        after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2, x_pos_mil=50, min_dist=5, max_dist=10,
-                                                max_angle_diff=np.pi / 8)
+        after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2, x_pos_mil=50, min_dist=5,
+                                                max_dist=10, max_angle_diff=np.pi / 8)
 
         after_grouping_correct = np.arange(6)
         self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
 
         after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2, x_pos_mil=50, min_dist=1,
-                                                max_dist=5,
-                                                max_angle_diff=np.pi / 8)
+                                                max_dist=5, max_angle_diff=np.pi / 8)
 
         after_grouping_correct = np.array([])
         self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
 
         groups = [[0, 4, 2], [3, 1, 5]]
-        after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2, x_pos_mil=50, min_dist=2, max_dist=10,
+        after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2, x_pos_mil=50, min_dist=2,
+                                                max_dist=10,
                                                 max_angle_diff=np.pi / 8)
 
         after_grouping_correct = np.arange(6)
@@ -872,6 +1083,34 @@ class TestFunctionsLars(unittest.TestCase):
                                                 max_angle_diff=np.pi / 9)
 
         after_grouping_correct = np.array([])
+        self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
+
+        x_lines2 = np.array([15, 35, 55, 25, 45, 65, 35, 55, 75])
+        y_lines2 = np.array([15, 35, 55, 15, 35, 55, 15, 35, 55])
+        lines2 = np.zeros((9, 1, 4), dtype=int)
+        lines2[0, 0, :] = np.array([10, 10, 20, 20])
+        lines2[1, 0, :] = np.array([30, 30, 40, 40])
+        lines2[2, 0, :] = np.array([50, 50, 60, 60])
+        lines2[3, 0, :] = np.array([20, 10, 30, 20])
+        lines2[4, 0, :] = np.array([40, 30, 50, 40])
+        lines2[5, 0, :] = np.array([60, 50, 70, 60])
+        lines2[6, 0, :] = np.array([30, 10, 40, 20])
+        lines2[7, 0, :] = np.array([50, 30, 60, 40])
+        lines2[8, 0, :] = np.array([70, 50, 80, 60])
+        angle_lines2 = np.zeros(9) + np.pi / 4
+
+        groups = [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
+
+        after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2, x_pos_mil=50, min_dist=5,
+                                                max_dist=10,
+                                                max_angle_diff=np.pi / 8)
+        after_grouping_correct = np.arange(6) + 3
+        self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
+
+        after_grouping = couple_groups_of_lines(groups, x_lines2, y_lines2, angle_lines2, x_pos_mil=25, min_dist=5,
+                                                max_dist=10,
+                                                max_angle_diff=np.pi / 8)
+        after_grouping_correct = np.arange(6)
         self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
 
     def test_create_line_mask(self):
@@ -1137,7 +1376,38 @@ class TestFunctionsLars(unittest.TestCase):
 
         self.assertTrue(np.array_equal(yxr, yxr_correct))
 
+        n = 100
+        img = np.zeros((n, n))
 
+        circle_x = 60
+        circle_y = 75
+        r = 10
+        for i in range(n):
+            for j in range(n):
+                img[i, j] = (i - circle_y) ** 2 + (j - circle_x) ** 2 <= r ** 2
+        for i in range(20):
+            img[10:10 + i, 10 + i] = 1
+        # img[10:21, 20:31] = 1
+        img[40:51, 40:61] = 1
+        img[40:46, 70:91] = 1
+
+        keypoints, yxr = detect_blobs(img, min_circ=0, max_circ=1.01, min_area=0, max_area=np.inf, min_in=0,
+                                      max_in=1.01, min_con=0, max_con=1.01, plotting=False)
+        yxr_correct = np.array([[75, 60, 9], [42, 80, 6], [45, 50, 9], [16, 23, 7]])
+
+        self.assertTrue(np.array_equal(yxr, yxr_correct))
+
+        keypoints, yxr = detect_blobs(img, min_circ=0.6, max_circ=1.01, min_area=0, max_area=np.inf, min_in=0,
+                                      max_in=1.01, min_con=0, max_con=1.01, plotting=False)
+        yxr_correct = np.array([[75, 60, 9], [45, 50, 9]])
+
+        self.assertTrue(np.array_equal(yxr, yxr_correct))
+
+        keypoints, yxr = detect_blobs(img, min_circ=0.8, max_circ=1.01, min_area=0, max_area=np.inf, min_in=0,
+                                      max_in=1.01, min_con=0, max_con=1.01, plotting=False)
+        yxr_correct = np.array([[75, 60, 9]])
+
+        self.assertTrue(np.array_equal(yxr, yxr_correct))
 
 
 if __name__ == '__main__':
