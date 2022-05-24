@@ -57,10 +57,21 @@ def get_mask(img_before_blurred, img_after_blurred, max_dist_s=1 / 30, min_dist_
     return mask, mask_combined, combined
 
 
-def analyze_data(img_after, mask_combined, cropping, threshold_end):
+def analyze_data(img_after, mask_combined, cropping, threshold_end=0.25, open_close=True, rid_bg=True, b1=1, b2=4,
+                 b3=6, b4=10, min_circ=0.6, max_circ=1.01, min_area=0, max_area=np.inf, min_in=0, max_in=1.01,
+                 min_con=0, max_con=1.01, plotting=False):
+    """
+    j
+    j
+    k
+    """
+
     masked_img, extents = create_masked_img(img_after, mask_combined, cropping)
-    binary_end, binary_end_without = create_binary_end_image(mask_combined, masked_img, threshold_end,
-                                                             open_close=True, rid_of_back_signal=True)
-    key_points, yxr = detect_blobs(binary_end_without, min_circ=0.6, min_area=7 ** 2 / 2, plotting=False)
+    binary_end, binary_end_without = create_binary_end_image(mask_combined, masked_img, threshold=threshold_end,
+                                                             open_close=open_close, rid_of_back_signal=rid_bg, b1=b1,
+                                                             b2=b2, b3=b3, b4=b4)
+    key_points, yxr = detect_blobs(binary_end_without, min_circ=min_circ, max_circ=max_circ, min_area=min_area,
+                                   max_area=max_area, min_in=min_in, max_in=max_in, min_con=min_con, max_con=max_con,
+                                   plotting=plotting)
 
     return masked_img, extents, binary_end, binary_end_without, key_points, yxr

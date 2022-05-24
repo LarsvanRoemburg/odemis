@@ -926,6 +926,30 @@ def group_single_lines(x_lines, y_lines, lines, angle_lines, max_distance, max_a
 
 
 def combine_groups(groups, x_lines, y_lines, angle_lines, min_dist, max_dist, max_angle_diff):
+    """
+    Sub-function 1 of couple_groups_of_lines(). It looks for pairs of grouped single lines which can form the
+    boundaries of the milling site and puts it in a matrix of n x n groups with the position [i, j] being the result of
+    combining group i and j. If the value is 0, it cannot be combined. If it can be combined, the combined number of
+    lines is outputted at that [i, j] position.
+
+    Parameters:
+         groups (list):                 A list with all the groups created. Each group has the index values of the
+                                        lines in that group. So lines[groups[0]] gives you the lines of the first group.
+         x_lines (ndarray):             The x-centers of the lines.
+         y_lines (ndarray):             The y-centers of the lines.
+         angle_lines (ndarray):         The angles of the lines.
+         min_dist (float):              The minimum perpendicular distance between groups of lines in pixels to group
+                                        them.
+         max_dist (float):              The maximum perpendicular distance between groups of lines in pixels to group
+                                        them.
+         max_angle_diff (float):        The maximum difference in angles between groups of lines to group them.
+
+    Returns:
+        size_groups_combined (ndarray): A n x n matrix with n being the number of groups. If groups i and j were able to
+                                        combine, the output at the matrix position [i, j] is the total number of lines
+                                        of the groups combined.
+    """
+
     size_groups_combined = np.zeros((len(groups), len(groups)))
     # here we look at each combination of groups and if they have the right conditions, if so, the combined size of
     # the two groups will be put in the output array.
@@ -952,6 +976,29 @@ def combine_groups(groups, x_lines, y_lines, angle_lines, min_dist, max_dist, ma
 
 
 def combine_biggest_groups(biggest, groups, x_lines, y_lines, angle_lines, max_dist, max_angle_diff):
+    """
+    Sub-function 2 of couple_groups_of_lines(). If there are multiple combinations which are the biggest in numbers of
+    lines, this function will try to combine those biggest groups. This again will be outputted in an m x m matrix with
+    m being the number of the biggest groups.
+
+    Parameters:
+         biggest (tuple):               A tuple of where the biggest combinations of groups are in the
+                                        size_groups_combined.
+         groups (list):                 A list with all the groups created. Each group has the index values of the
+                                        lines in that group. So lines[groups[0]] gives you the lines of the first group.
+         x_lines (ndarray):             The x-centers of the lines.
+         y_lines (ndarray):             The y-centers of the lines.
+         angle_lines (ndarray):         The angles of the lines.
+         max_dist (float):              The maximum perpendicular distance between the biggest groups of lines in pixels
+                                        to group them.
+         max_angle_diff (float):        The maximum difference in angles between groups of lines to group them.
+
+    Returns:
+        merge_big_groups (ndarray):     An m x m matrix with 0 values for where the groups couldn't be combined and
+                                        with > 0 values for where they could be combined. The value there is the
+                                        combined number of lines.
+    """
+
     merge_big_groups = np.zeros((len(biggest[0]), len(biggest[0])))
 
     # calculate the mean angles and positions of both groups and see if they can be combined
@@ -990,6 +1037,27 @@ def combine_biggest_groups(biggest, groups, x_lines, y_lines, angle_lines, max_d
 
 
 def last_group_selection(groups, biggest, merge_big_groups, x_lines, x_pos_mil, angle_lines):
+    """
+    Sub-function 3 of couple_groups_of_lines().
+
+    Parameters:
+        groups (list):                  A list with all the groups created. Each group has the index values of the
+                                        lines in that group. So lines[groups[0]] gives you the lines of the first group.
+        biggest (tuple):                A tuple of where the biggest combinations of groups are in the
+                                        size_groups_combined.
+        merge_big_groups (ndarray):     An m x m matrix with 0 values for where the biggest groups couldn't be combined
+                                        and with > 0 values for where they could be combined. The value there is the
+                                        combined number of lines.
+        x_lines (ndarray):              The x-centers of the lines.
+        x_pos_mil (int):                The estimated x-position of the milling site in pixels.
+        angle_lines (ndarray):          The angles of the lines.
+
+
+    Returns:
+        after_grouping (ndarray):       The final selection of lines which make up the boundaries of the milling site.
+                                        You can get to these lines with lines[after_grouping].
+    """
+
     after_grouping = []
     if np.max(merge_big_groups) > 0:
         biggest2 = np.where(merge_big_groups == np.max(merge_big_groups))
@@ -1009,7 +1077,7 @@ def last_group_selection(groups, biggest, merge_big_groups, x_lines, x_pos_mil, 
                     angle_lines[groups[biggest[1][biggest2[1][i]]]])) / 4
 
                 # FIXME if angles are np.pi/2 it does not work
-                result = np.abs(x_mean - x_pos_mil) * np.abs(angle_mean-np.pi/2)**(1/3)
+                result = np.abs(x_mean - x_pos_mil) * np.abs(angle_mean - np.pi / 2) ** (1 / 3)
                 if result < d:
                     r = i
                     d = result
