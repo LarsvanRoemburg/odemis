@@ -1076,8 +1076,7 @@ def last_group_selection(groups, biggest, merge_big_groups, x_lines, x_pos_mil, 
                     angle_lines[groups[biggest[0][biggest2[1][i]]]]) + np.mean(
                     angle_lines[groups[biggest[1][biggest2[1][i]]]])) / 4
 
-                # FIXME if angles are np.pi/2 it does not work
-                result = np.abs(x_mean - x_pos_mil) * np.abs(angle_mean - np.pi / 2) ** (1 / 3)
+                result = np.abs(x_mean - x_pos_mil) + np.abs(angle_mean - np.pi / 2) * 100
                 if result < d:
                     r = i
                     d = result
@@ -1461,6 +1460,8 @@ def create_binary_end_image(mask, masked_img, threshold=0.25, open_close=True, r
 
     Returns:
         binary_end_result (ndarray):    A binary image which shows the thought to be signal in the masked image.
+        b_end_result_without (ndarray): A binary image which shows the thought to be signal in the masked image without
+                                        the signal on the boundary of the mask.
     """
 
     binary_end_result = masked_img >= threshold
@@ -1486,12 +1487,12 @@ def create_binary_end_image(mask, masked_img, threshold=0.25, open_close=True, r
 
         # subtracting the boundary signal of the initial signal image
         minus = binary_dilation(bound, mask=binary_end_result, iterations=0)  # * binary_end_result
-        binary_end_result_without = 1.0 * binary_end_result - 1.0 * minus
-        binary_end_result_without = np.array(binary_end_result_without, dtype=bool)
+        b_end_result_without = 1.0 * binary_end_result - 1.0 * minus
+        b_end_result_without = np.array(b_end_result_without, dtype=bool)
     else:  # if not getting rid of boundary signal, just output the end_result
-        binary_end_result_without = binary_end_result
+        b_end_result_without = binary_end_result
 
-    return binary_end_result, binary_end_result_without
+    return binary_end_result, b_end_result_without
 
 
 def detect_blobs(binary_end_result, min_circ=0, max_circ=1.01, min_area=0, max_area=np.inf, min_in=0, max_in=1.01,
@@ -1503,16 +1504,19 @@ def detect_blobs(binary_end_result, min_circ=0, max_circ=1.01, min_area=0, max_a
     If you want more information on the opencv blob detection and how the parameters exactly work:
     https://learnopencv.com/blob-detection-using-opencv-python-c/
 
+    NOTE: In the opencv documentation is stated that the range of most of the parameters are from 0 to 1 (including 1)
+    however I experienced that it does not include 1, so I put the upper limit to 1.01 of these parameters to include 1.
+
     Parameters:
         binary_end_result (ndarray):   The image on which blob detection should be performed.
-        min_circ (float):               The minimal circularity the blob needs to have to be detected (range:[0,1])
-        max_circ (float):               The maximal circularity the blob needs to have to be detected (range:[0,1])
+        min_circ (float):               The minimal circularity the blob needs to have to be detected (range:[0,1.01])
+        max_circ (float):               The maximal circularity the blob needs to have to be detected (range:[0,1.01])
         min_area (float):               The minimal area in pixels the blob needs to have to be detected (range:[0,inf])
         max_area (float):               The maximal area in pixels the blob needs to have to be detected (range:[0,inf])
-        min_in (float):                 The minimal inertia the blob needs to have to be detected (range:[0,1])
-        max_in (float):                 The maximal inertia the blob needs to have to be detected (range:[0,1])
-        min_con (float):                The minimal convexity the blob needs to have to be detected (range:[0,1])
-        max_con (float):                The maximal convexity the blob needs to have to be detected (range:[0,1])
+        min_in (float):                 The minimal inertia the blob needs to have to be detected (range:[0,1.01])
+        max_in (float):                 The maximal inertia the blob needs to have to be detected (range:[0,1.01])
+        min_con (float):                The minimal convexity the blob needs to have to be detected (range:[0,1.01])
+        max_con (float):                The maximal convexity the blob needs to have to be detected (range:[0,1.01])
         plotting (bool):                If set to True, the detected blobs are shown with red circles in the image.
 
     Returns:

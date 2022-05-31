@@ -94,7 +94,7 @@ if __name__ == '__main__':
     max_slices = 30
     cropping = True  # if true, the last images will be cropped to only the mask
 
-    for nnn in np.arange(13, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+    for nnn in np.arange(5, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
         print("dataset nr. {}".format(nnn + 1))
         print(data_paths_before[nnn])
         print(data_paths_after[nnn])
@@ -107,13 +107,10 @@ if __name__ == '__main__':
 
         img_before, img_after, img_before_blurred, img_after_blurred = pre_processing_data(img_before, img_after)
 
-        mask_diff, mask_combined, combined = get_mask(img_before_blurred, img_after_blurred, plotting_lines=True)
+        mask_diff, mask_combined, combined = get_mask(img_before_blurred, img_after_blurred)
 
-        masked_img, extents, binary_end, binary_end_without, key_points, yxr = analyze_data(img_after, mask_combined,
-                                                                                            cropping, threshold_end)
-        masked_img2, extents2, binary_end2, binary_end_without2, key_points2, yxr2 = analyze_data(img_after, mask_diff,
-                                                                                                  cropping,
-                                                                                                  threshold_end)
+        masked_img, extents, binary_end, binary_end_without, key_points, yxr = analyze_data(img_after, mask_combined)
+        masked_img2, extents2, binary_end2, binary_end_without2, key_points2, yxr2 = analyze_data(img_after, mask_diff)
 
         plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask_diff, masked_img,
                          masked_img2, binary_end_without, binary_end_without2, cropping, extents, extents2)

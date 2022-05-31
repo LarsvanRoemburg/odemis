@@ -118,7 +118,7 @@ class TestFunctionsLars(unittest.TestCase):
                 img_correct[img_correct > thr_out] = thr_out
 
             self.assertTrue(np.array_equal(img, img_correct))
-            # use np.testing.assert_almost_equal()
+            # use np.testing.assert_almost_equal() np.testing.assert_allclose() np.testing.assert_array_almost_equal()
 
     def test_rescaling(self):
         n = 20
@@ -612,6 +612,12 @@ class TestFunctionsLars(unittest.TestCase):
         self.assertTrue(np.array_equal(result, correct))
 
     def test_combine_and_constraint_lines(self):
+        # image = np.zeros((n, n))
+        # for points in lines2:
+        #     # Extracted points nested in the list
+        #     x1, y1, x2, y2 = points[0]
+        #     # Draw the lines joining the points on the original image
+        #     cv2.line(image, (x1, y1), (x2, y2), 255, 1)
         x_lines2 = np.array([15, 35, 55, 25, 45, 65])
         y_lines2 = np.array([15, 35, 55, 15, 35, 55])
         lines2 = np.zeros((6, 1, 4), dtype=int)
@@ -751,6 +757,12 @@ class TestFunctionsLars(unittest.TestCase):
         self.assertTrue(np.array_equal(lines, lines_correct))
 
     def test_group_single_lines(self):
+        # image = np.zeros((n, n))
+        # for points in lines2:
+        #     # Extracted points nested in the list
+        #     x1, y1, x2, y2 = points[0]
+        #     # Draw the lines joining the points on the original image
+        #     cv2.line(image, (x1, y1), (x2, y2), 255, 1)
         x_lines2 = np.array([15, 35, 55, 25, 45, 65])
         y_lines2 = np.array([15, 35, 55, 15, 35, 55])
         lines2 = np.zeros((6, 1, 4), dtype=int)
@@ -804,6 +816,12 @@ class TestFunctionsLars(unittest.TestCase):
         self.assertTrue(np.array_equal(groups, groups_correct))
 
     def test_combine_groups(self):
+        # image = np.zeros((n, n))
+        # for points in lines2:
+        #     # Extracted points nested in the list
+        #     x1, y1, x2, y2 = points[0]
+        #     # Draw the lines joining the points on the original image
+        #     cv2.line(image, (x1, y1), (x2, y2), 255, 1)
         x_lines2 = np.array([15, 35, 55, 25, 45, 65, 35, 55, 75])
         y_lines2 = np.array([15, 35, 55, 15, 35, 55, 15, 35, 55])
         lines2 = np.zeros((9, 1, 4), dtype=int)
@@ -856,6 +874,12 @@ class TestFunctionsLars(unittest.TestCase):
         self.assertTrue(np.array_equal(size_groups_combined, size_groups_combined_correct))
 
     def test_combine_biggest_groups(self):
+        # image = np.zeros((n, n))
+        # for points in lines2:
+        #     # Extracted points nested in the list
+        #     x1, y1, x2, y2 = points[0]
+        #     # Draw the lines joining the points on the original image
+        #     cv2.line(image, (x1, y1), (x2, y2), 255, 1)
         x_lines2 = np.array([15, 35, 55, 25, 45, 65, 35, 55, 75])
         y_lines2 = np.array([15, 35, 55, 15, 35, 55, 15, 35, 55])
         lines2 = np.zeros((9, 1, 4), dtype=int)
@@ -927,50 +951,56 @@ class TestFunctionsLars(unittest.TestCase):
         self.assertTrue(np.array_equal(merge_big_groups, merge_big_groups_correct))
 
     def test_last_group_selection(self):
-        # x_lines2 = np.array([15, 35, 55, 25, 45, 65, 35, 55, 75])
-        # y_lines2 = np.array([15, 35, 55, 15, 35, 55, 15, 35, 55])
-        # lines2 = np.zeros((9, 1, 4), dtype=int)
-        # lines2[0, 0, :] = np.array([10, 10, 20, 20])
-        # lines2[1, 0, :] = np.array([30, 30, 40, 40])
-        # lines2[2, 0, :] = np.array([50, 50, 60, 60])
-        # lines2[3, 0, :] = np.array([20, 10, 30, 20])
-        # lines2[4, 0, :] = np.array([40, 30, 50, 40])
-        # lines2[5, 0, :] = np.array([60, 50, 70, 60])
-        # lines2[6, 0, :] = np.array([30, 10, 40, 20])
-        # lines2[7, 0, :] = np.array([50, 30, 60, 40])
-        # lines2[8, 0, :] = np.array([70, 50, 80, 60])
-        # angle_lines2 = np.zeros(9) + np.pi / 4
-        #
-        # groups = [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
-        # size_groups_combined = np.zeros((3, 3))
-        # size_groups_combined[0, 1] = 6
-        # size_groups_combined[1, 2] = 6
-        # biggest = np.where(size_groups_combined == np.max(size_groups_combined))
-        # merge_big_groups = np.zeros((2, 2))
-        # merge_big_groups[0, 1] = 12
-        #
-        # after_grouping = last_group_selection(groups, biggest, merge_big_groups, x_lines2, x_pos_mil=40,
-        #                                       angle_lines=angle_lines2)
-        #
-        # after_grouping_correct = np.arange(9)
-        #
-        # self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
-        #
-        # merge_big_groups = np.zeros((2, 2))
-        #
-        # after_grouping = last_group_selection(groups, biggest, merge_big_groups, x_lines2, x_pos_mil=40,
-        #                                       angle_lines=angle_lines2)
-        #
-        # after_grouping_correct = np.arange(6)
-        #
-        # self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
-        #
-        # after_grouping = last_group_selection(groups, biggest, merge_big_groups, x_lines2, x_pos_mil=70,
-        #                                       angle_lines=angle_lines2)
-        #
-        # after_grouping_correct = np.arange(6)+3
-        #
-        # self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
+        # image = np.zeros((n, n))
+        # for points in lines2:
+        #     # Extracted points nested in the list
+        #     x1, y1, x2, y2 = points[0]
+        #     # Draw the lines joining the points on the original image
+        #     cv2.line(image, (x1, y1), (x2, y2), 255, 1)
+        x_lines2 = np.array([15, 35, 55, 25, 45, 65, 35, 55, 75])
+        y_lines2 = np.array([15, 35, 55, 15, 35, 55, 15, 35, 55])
+        lines2 = np.zeros((9, 1, 4), dtype=int)
+        lines2[0, 0, :] = np.array([10, 10, 20, 20])
+        lines2[1, 0, :] = np.array([30, 30, 40, 40])
+        lines2[2, 0, :] = np.array([50, 50, 60, 60])
+        lines2[3, 0, :] = np.array([20, 10, 30, 20])
+        lines2[4, 0, :] = np.array([40, 30, 50, 40])
+        lines2[5, 0, :] = np.array([60, 50, 70, 60])
+        lines2[6, 0, :] = np.array([30, 10, 40, 20])
+        lines2[7, 0, :] = np.array([50, 30, 60, 40])
+        lines2[8, 0, :] = np.array([70, 50, 80, 60])
+        angle_lines2 = np.zeros(9) + np.pi / 4
+
+        groups = [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
+        size_groups_combined = np.zeros((3, 3))
+        size_groups_combined[0, 1] = 6
+        size_groups_combined[1, 2] = 6
+        biggest = np.where(size_groups_combined == np.max(size_groups_combined))
+        merge_big_groups = np.zeros((2, 2))
+        merge_big_groups[0, 1] = 12
+
+        after_grouping = last_group_selection(groups, biggest, merge_big_groups, x_lines2, x_pos_mil=40,
+                                              angle_lines=angle_lines2)
+
+        after_grouping_correct = np.arange(9)
+
+        self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
+
+        merge_big_groups = np.zeros((2, 2))
+
+        after_grouping = last_group_selection(groups, biggest, merge_big_groups, x_lines2, x_pos_mil=40,
+                                              angle_lines=angle_lines2)
+
+        after_grouping_correct = np.arange(6)
+
+        self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
+
+        after_grouping = last_group_selection(groups, biggest, merge_big_groups, x_lines2, x_pos_mil=70,
+                                              angle_lines=angle_lines2)
+
+        after_grouping_correct = np.arange(6)+3
+
+        self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
 
         x_lines2 = np.array([10, 10, 10, 20, 20, 20, 40, 40, 40, 50, 50, 50, 15, 15, 15, 45, 45, 45])
         y_lines2 = np.array([15, 35, 55, 15, 35, 55, 15, 35, 55, 15, 35, 55, 15, 35, 55, 15, 35, 55])
@@ -1009,7 +1039,15 @@ class TestFunctionsLars(unittest.TestCase):
         after_grouping = last_group_selection(groups, biggest, merge_big_groups, x_lines2, x_pos_mil=70,
                                               angle_lines=angle_lines2)
 
-        after_grouping_correct = np.arange(9)+3
+        after_grouping_correct = np.arange(9)+6
+        after_grouping_correct[-3:] += 3
+
+        self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
+
+        after_grouping = last_group_selection(groups, biggest, merge_big_groups, x_lines2, x_pos_mil=20,
+                                              angle_lines=angle_lines2)
+
+        after_grouping_correct = np.arange(9)
         after_grouping_correct[-3:] += 6
 
         self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
