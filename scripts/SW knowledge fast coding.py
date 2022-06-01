@@ -58,25 +58,22 @@ def fizzbuzz():
             print(i)
 
 
-fizzbuzz()
+# fizzbuzz()
 
 
 def max_profit(prices_list):
-    a = 1
-    while prices_list[0] == prices_list[a]:
-        a += 1
-    if prices_list[0] < prices_list[a]:
+    if prices_list[0] < prices_list[1]:
         local_minima = [0]
     else:
         local_minima = []
 
     local_maxima = []
     for i in range(1, len(prices_list)-1):
-        if prices_list[i] < prices_list[i+1] and prices_list[i] < prices_list[i-1]:
+        if prices_list[i] < prices_list[i+1] and prices_list[i] <= prices_list[i-1]:
             local_minima.append(i)
-        elif prices_list[i] > prices_list[i+1] and prices_list[i] > prices_list[i-1]:
+        elif prices_list[i] > prices_list[i+1] and prices_list[i] >= prices_list[i-1]:
             local_maxima.append(i)
-    if prices_list[-1] > prices_list[-2]:
+    if prices_list[-1] >= prices_list[-2]:
         local_maxima.append(len(prices_list)-1)
     local_maxima = np.array(local_maxima)
     local_minima = np.array(local_minima)
@@ -93,6 +90,6 @@ def max_profit(prices_list):
                     maxima_not_used[j] = False
 
 
-market = [0, 0, 0, 50, 50, 50, 40]
+market = np.random.rand(100)*np.linspace(0.5, 1.5, 100)
 
 max_profit(market)

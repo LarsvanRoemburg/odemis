@@ -73,8 +73,7 @@ def get_mask(img_before_blurred, img_after_blurred, max_dist_s=1 / 30, min_dist_
     mid_milling_site = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred)
 
     # here I try line detection
-    x_lines, y_lines, lines, edges = find_lines(img_after_blurred)
-    # lines = np.array([])
+    x_lines, y_lines, lines, edges = find_lines(img_after_blurred, low_thres_edges=0, high_thres_edges=0)
     # apparently for mammalian cell samples, setting the hysteresis threshold to 0 and 0 is better
 
     # look at the lines and see if they have the same angle and rough distance between them
@@ -152,7 +151,7 @@ def analyze_data(img_after, mask_combined, cropping=True, threshold_end=0.25, op
     masked_img, extents = create_masked_img(img_after, mask_combined, cropping)
     binary_end, binary_end_without = create_binary_end_image(mask_combined, masked_img, threshold=threshold_end,
                                                              open_close=open_close, rid_of_back_signal=rid_bg)
-    key_points, yxr = detect_blobs(binary_end_without, min_circ=min_circ, max_circ=max_circ, min_area=min_area,
-                                   max_area=max_area, plotting=plotting)
+    key_points, yxr = detect_blobs(gaussian_filter(masked_img, sigma=1), min_circ=0.3, max_circ=1.01, min_area=10,
+                                   max_area=50**2, plotting=True)
 
     return masked_img, extents, binary_end, binary_end_without, key_points, yxr

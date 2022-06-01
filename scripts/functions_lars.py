@@ -1,3 +1,4 @@
+import gc
 import logging
 import numpy as np
 import matplotlib.pyplot as plt
@@ -460,25 +461,25 @@ def get_image(data_paths_before, data_paths_after, channel_before, channel_after
     """
 
     if mode == 'in_focus':
-        # reading the data
+        # reading the data and making a z-projection
         data_before_milling = tiff.read_data(data_paths_before)
         meta_before = data_before_milling[channel_before].metadata
-        data_after_milling = tiff.read_data(data_paths_after)
-        meta_after = data_after_milling[channel_after].metadata
-
-        # if both data sets have only one slice, just output those.
-        if data_before_milling[0].shape[0] != 1 and data_after_milling[0].shape[0] != 1:
-            img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices_proj, channel_before,
-                                                         mode=proj_mode)
-            img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices_proj, channel_after,
-                                                        mode=proj_mode)
-
-            return img_before, img_after, meta_before, meta_after
-
-        # creating projection images for finding a rough estimate for milling site position
         img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices_proj, channel_before,
                                                      mode=proj_mode)
+        one_slice_before = data_before_milling[0].shape[0] != 1
+        del data_before_milling
+        gc.collect()
+
+        data_after_milling = tiff.read_data(data_paths_after)
+        meta_after = data_after_milling[channel_after].metadata
         img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices_proj, channel_after, mode=proj_mode)
+        one_slice_after = data_after_milling[0].shape[0] != 1
+        del data_after_milling
+        gc.collect()
+
+        # if both data sets have only one slice, just output those.
+        if one_slice_before and one_slice_after:
+            return img_before, img_after, meta_before, meta_after
 
         # rescaling one image to the other if necessary
         img_before, img_after, magni = rescaling(img_before, img_after)
@@ -499,20 +500,32 @@ def get_image(data_paths_before, data_paths_after, channel_before, channel_after
 
         # finding the in focus slice.
         # because the raw data is not yet scaled properly, the position needs to be adjusted for that
+        data_before_milling = tiff.read_data(data_paths_before)
         if magni == 1:
             img_before, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos,
                                                                          milling_x_pos,
                                                                          channel_before, num_slices=max_slices_focus,
                                                                          mode=proj_mode)
-            img_after, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos - shift[0],
-                                                                        milling_x_pos - shift[1], channel_after,
-                                                                        num_slices=max_slices_focus,
-                                                                        mode=proj_mode)
         elif magni > 1:
             img_before, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos,
                                                                          milling_x_pos,
                                                                          channel_before, num_slices=max_slices_focus,
                                                                          mode=proj_mode)
+        elif magni < 1:
+            img_before, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos * magni,
+                                                                         milling_x_pos * magni, channel_before,
+                                                                         num_slices=max_slices_focus,
+                                                                         mode=proj_mode)
+        del data_before_milling
+        gc.collect()
+
+        data_after_milling = tiff.read_data(data_paths_after)
+        if magni == 1:
+            img_after, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos - shift[0],
+                                                                        milling_x_pos - shift[1], channel_after,
+                                                                        num_slices=max_slices_focus,
+                                                                        mode=proj_mode)
+        elif magni > 1:
             img_after, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling,
                                                                         (milling_y_pos - shift[0]) / magni,
                                                                         (milling_x_pos - shift[1]) / magni,
@@ -520,14 +533,13 @@ def get_image(data_paths_before, data_paths_after, channel_before, channel_after
                                                                         num_slices=max_slices_focus,
                                                                         mode=proj_mode)
         elif magni < 1:
-            img_before, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling, milling_y_pos * magni,
-                                                                         milling_x_pos * magni, channel_before,
-                                                                         num_slices=max_slices_focus,
-                                                                         mode=proj_mode)
             img_after, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling, milling_y_pos - shift[0],
                                                                         milling_x_pos - shift[1], channel_after,
                                                                         num_slices=max_slices_focus,
                                                                         mode=proj_mode)
+        del data_after_milling
+        gc.collect()
+
     elif mode == 'projection':
         # reading the data and just make a z-projection
         data_before_milling = tiff.read_data(data_paths_before)
@@ -535,12 +547,14 @@ def get_image(data_paths_before, data_paths_after, channel_before, channel_after
         img_before = z_projection_and_outlier_cutoff(data_before_milling, max_slices_proj, channel_before,
                                                      mode=proj_mode)
         del data_before_milling
+        gc.collect()
 
         data_after_milling = tiff.read_data(data_paths_after)
         meta_after = data_after_milling[channel_after].metadata
         img_after = z_projection_and_outlier_cutoff(data_after_milling, max_slices_proj, channel_after, mode=proj_mode)
 
         del data_after_milling
+        gc.collect()
 
     else:
         raise NameError("Input for mode not recognized. It can be 'projection' or 'in_focus'.")
@@ -1252,6 +1266,8 @@ def create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, i
     if all_groups:
         while len(groups2) > 2:
             inv_max_dist -= 1
+            if inv_max_dist == 0:
+                break
             groups2 = group_single_lines(x_lines3, y_lines3, lines3, angle_lines3,
                                          max_distance=img_shape[1] / inv_max_dist, max_angle_diff=max_angle)
 
@@ -1495,8 +1511,8 @@ def create_binary_end_image(mask, masked_img, threshold=0.25, open_close=True, r
     return binary_end_result, b_end_result_without
 
 
-def detect_blobs(binary_end_result, min_circ=0, max_circ=1.01, min_area=0, max_area=np.inf, min_in=0, max_in=1.01,
-                 min_con=0, max_con=1.01, plotting=False):
+def detect_blobs(binary_end_result, min_thres=0.25, max_thres=0.5, min_circ=0.3, max_circ=1.01, min_area=5,
+                 max_area=np.inf, min_in=0, max_in=1.01, min_con=0, max_con=1.01, plotting=False):
     """
     Here blob detection from opencv is performed on a binary image (or an image with intensities ranging from 0 to 1).
     You can set the constraints of the blob detection with the parameters of this function.
@@ -1508,7 +1524,13 @@ def detect_blobs(binary_end_result, min_circ=0, max_circ=1.01, min_area=0, max_a
     however I experienced that it does not include 1, so I put the upper limit to 1.01 of these parameters to include 1.
 
     Parameters:
-        binary_end_result (ndarray):   The image on which blob detection should be performed.
+        binary_end_result (ndarray):    The image on which blob detection should be performed.
+        min_thres (float):              If the image has a grey scale, the blob detection checks several thresholding
+                                        levels beginning with the minimal threshold set by this value. Both min_thres
+                                        and max_thres need a specific nonzero value for them to be used.
+        max_thres (float):              If the image has a grey scale, the blob detection checks several thresholding
+                                        levels ending with the maximal threshold set by this value. Both min_thres
+                                        and max_thres need a specific nonzero value for them to be used.
         min_circ (float):               The minimal circularity the blob needs to have to be detected (range:[0,1.01])
         max_circ (float):               The maximal circularity the blob needs to have to be detected (range:[0,1.01])
         min_area (float):               The minimal area in pixels the blob needs to have to be detected (range:[0,inf])
@@ -1534,6 +1556,11 @@ def detect_blobs(binary_end_result, min_circ=0, max_circ=1.01, min_area=0, max_a
     params = cv2.SimpleBlobDetector_Params()
     params.filterByColor = False
     params.filterByConvexity = False
+
+    # thresholding for grey scale images, both min and max need a specific nonzero value.
+    if min_thres and max_thres:
+        params.minThreshold = min_thres * 255
+        params.maxThreshold = max_thres * 255
 
     # circularity
     if (min_circ == 0) & (max_circ == 1.01):
@@ -1594,17 +1621,25 @@ def detect_blobs(binary_end_result, min_circ=0, max_circ=1.01, min_area=0, max_a
                 circy, circx = circle_perimeter(center_y, center_x, radius,
                                                 shape=im.shape)
                 im[circy, circx] = (220, 20, 20, 255)
-                im[circy + 1, circx] = (220, 20, 20, 255)
-                im[circy, circx + 1] = (220, 20, 20, 255)
-                im[circy + 1, circx + 1] = (220, 20, 20, 255)
-                im[circy - 1, circx] = (220, 20, 20, 255)
-                im[circy, circx - 1] = (220, 20, 20, 255)
-                im[circy - 1, circx - 1] = (220, 20, 20, 255)
+                #im[circy + 1, circx] = (220, 20, 20, 255)
+                #im[circy, circx + 1] = (220, 20, 20, 255)
+                #im[circy + 1, circx + 1] = (220, 20, 20, 255)
+                #im[circy - 1, circx] = (220, 20, 20, 255)
+                #im[circy, circx - 1] = (220, 20, 20, 255)
+                #im[circy - 1, circx - 1] = (220, 20, 20, 255)
 
         ax.imshow(im)
         plt.show()
 
     return key_points, yxr
+
+
+def from_binary_to_answer(binary_end_result, b_end_result_without, yxr):
+    """
+    Returns:
+          advice (float): in a range from 0 to 1 with 0 being no signal at all and 1 being there is definitely signal.
+    """
+
 
 
 def show_line_detection_steps(img_after_blurred, edges, lines, lines2, after_grouping):
