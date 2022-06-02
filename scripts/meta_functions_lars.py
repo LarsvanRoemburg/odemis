@@ -29,7 +29,7 @@ def pre_processing_data(img_before, img_after, blur=25, max_shift=4):
     img_before, img_after, magni = rescaling(img_before, img_after)
 
     # calculate the shift between the two images
-    img_after, shift = overlay(img_before, img_after, max_shift=max_shift)  # max_shift between 1 and inf
+    img_before, img_after, shift = overlay(img_before, img_after, max_shift=max_shift)  # max_shift between 1 and inf
 
     # preprocessing steps of the images: blurring the image
     img_before, img_before_blurred = blur_and_norm(img_before, blur=blur)

@@ -247,7 +247,7 @@ class TestFunctionsLars(unittest.TestCase):
             a[50, 50] = 1
             b[int(i * 10), int(i * 10)] = 1
 
-            b_result, shift = overlay(a, b, 1)
+            a_result, b_result, shift = overlay(a, b, 1)
             correct_shift = np.array([[50 - int(i * 10)], [50 - int(i * 10)]])
 
             self.assertTrue(np.array_equal(shift, correct_shift))
@@ -258,7 +258,7 @@ class TestFunctionsLars(unittest.TestCase):
             a[50, 50] = 1
             b[50, int(i * 10)] = 1
 
-            b_result, shift = overlay(a, b, 1)
+            a_result, b_result, shift = overlay(a, b, 1)
             correct_shift = np.array([[0], [50 - int(i * 10)]])
 
             self.assertTrue(np.array_equal(shift, correct_shift))
@@ -269,7 +269,7 @@ class TestFunctionsLars(unittest.TestCase):
             a[50, 50] = 1
             b[int(i * 10), 50] = 1
 
-            b_result, shift = overlay(a, b, 1)
+            a_result, b_result, shift = overlay(a, b, 1)
             correct_shift = np.array([[50 - int(i * 10)], [0]])
 
             self.assertTrue(np.array_equal(shift, correct_shift))
@@ -281,7 +281,7 @@ class TestFunctionsLars(unittest.TestCase):
             a[int(n / 2), int(n / 2)] = 1
             b[int(i * n / 10), int(n / 2)] = 1
 
-            b_result, shift = overlay(a, b, 4)
+            a_result, b_result, shift = overlay(a, b, 4)
             if i < 3 or i > 7:
                 correct_shift = np.array([[0], [0]])
             else:
@@ -298,7 +298,7 @@ class TestFunctionsLars(unittest.TestCase):
             for i in range(3):
                 b[int(i * 10 + (j + 1) * 10), 50] = 1
 
-            b_result, shift = overlay(a, b, 1)
+            a_result, b_result, shift = overlay(a, b, 1)
             t = np.array([10, 20, 30])
             e = np.min(np.abs(t + j * 10 - 50))
             if j > 4:

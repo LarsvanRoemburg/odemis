@@ -7,7 +7,8 @@ from scipy.ndimage import binary_opening, binary_closing, binary_erosion, binary
 from scipy.signal import fftconvolve
 from skimage.draw import circle_perimeter
 from skimage.util import img_as_ubyte
-from skimage.feature import canny
+from skimage.feature import canny, match_template
+from skimage.transform import rotate
 from copy import deepcopy
 from odemis.dataio import tiff
 import cv2
@@ -197,6 +198,121 @@ def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, outlier_c
         img[img > thr_out] = thr_out
 
     return img
+
+
+def downsize_image(image, factor=4):
+    temp_img = np.zeros((int(image.shape[0] / factor), image.shape[1]))
+    new_img = np.zeros((int(image.shape[0] / factor), int(image.shape[1] / factor)))
+
+    for e in range(temp_img.shape[0]):
+        temp_img[e, :] = np.mean(image[int(factor * e):int(factor * e + factor), :], axis=0)
+    for j in range(new_img.shape[1]):
+        new_img[:, j] = np.mean(temp_img[:, int(factor * j):int(factor * j + factor)], axis=1)
+
+    return new_img
+
+
+def match_template_to_image(img_before, img_after, factor=4, num_templates=10, num_angles=21):
+    img_before = downsize_image(img_before, factor)
+    img_before = gaussian_filter(img_before, 1)
+    img_after = downsize_image(img_after, factor)
+    img_after = gaussian_filter(img_after, 1)
+    # img_after[img_after > np.max(img_after)/3] = np.max(img_after)/3
+    # threshold = 0.01
+    diff = gaussian_filter(img_before - img_after, sigma=int(100 / factor))
+    mid_y = np.where(diff == np.max(diff))[0][0]
+    mid_x = np.where(diff == np.max(diff))[1][0]
+
+    # x1, y1, x2, y2 = bounding_box(draw_section_contour(img_after), offset=10)
+    # template = crop_to_border(img_after, [x1, y1, x2, y2])
+    template_size = int(img_after.shape[0] / 2)
+    num_width = num_templates
+    templates = np.zeros((num_width, int(template_size / 3), template_size))
+    widths = np.linspace(img_after.shape[0] / 20, img_after.shape[0] / 4, num_width)
+    for i in range(num_width):
+        border = int(template_size / 2 - widths[i] / 2)
+        templates[i, :, :border] = np.linspace(0, 1, border)
+        templates[i, :, -border:] = np.linspace(1, 0, border)
+
+    result = np.array(match_template(img_after, templates[0]))
+    mid_y -= int(templates[0].shape[0] / 2)
+    mid_x -= int(templates[0].shape[1] / 2)
+    left_y = int(mid_y - img_after.shape[0] / 6)
+    right_y = int(mid_y + img_after.shape[0] / 6)
+    left_x = int(mid_x - img_after.shape[1] / 6)
+    right_x = int(mid_x + img_after.shape[1] / 6)
+    if left_y < 0:
+        left_y = 0
+    if left_x < 0:
+        left_x = 0
+    if right_y >= result.shape[0]:
+        right_y = result.shape[0] - 1
+    if right_x >= result.shape[1]:
+        right_x = result.shape[1] - 1
+    start_angle = -10
+    stop_angle = 10
+    angles = np.linspace(start_angle, stop_angle, num_angles, endpoint=True)
+
+    total = np.zeros((len(templates), result.shape[0], result.shape[1]))
+    for i, template in enumerate(templates):
+        result = match_template(img_after, template)
+        total[i, left_y:right_y, left_x:right_x] = result[left_y:right_y, left_x:right_x]
+        print(f'template nr. {i}')
+
+    print(f"best template is nr. {np.where(total == np.max(total))[0][0]}")
+    best_template = templates[np.where(total == np.max(total))[0][0]]
+
+    total = np.zeros((len(angles), result.shape[0], result.shape[1]))
+    for a, angle in enumerate(angles):
+        result = match_template(img_after, rotate(best_template, angles[a], mode='constant', cval=0))
+        total[a, left_y:right_y, left_x:right_x] = result[left_y:right_y, left_x:right_x]
+        print(f"angle = {angle}")
+
+    best_angle = angles[np.where(total == np.max(total))[0][0]]
+    print(f"best angle = {best_angle}")
+    best_y = np.where(total == np.max(total))[1][0]
+    best_x = np.where(total == np.max(total))[2][0]
+
+    show_img = np.array(img_after)
+    show_img[best_y:best_y + templates[0].shape[0], best_x:best_x + templates[0].shape[1]] += 0.5 * rotate(
+        best_template,
+        best_angle,
+        mode='constant',
+        cval=0)
+
+    total = np.zeros((len(templates), len(angles), result.shape[0], result.shape[1]))
+    for i, template in enumerate(templates):
+        print(f'template nr. {i}')
+        for a, angle in enumerate(angles):
+            result = match_template(img_after, rotate(template, angles[a], mode='constant', cval=0))
+            total[i, a, left_y:right_y, left_x:right_x] = result[left_y:right_y, left_x:right_x]
+            print(f"angle = {angle}")
+
+    print(np.where(total == np.max(total)))
+    best_template = templates[np.where(total == np.max(total))[0][0]]
+    best_angle = angles[np.where(total == np.max(total))[1][0]]
+    best_y = np.where(total == np.max(total))[2][0]
+    best_x = np.where(total == np.max(total))[3][0]
+
+    # total = total / len(np.arange(start_angle, stop_angle, angle_step))
+    # plt.imshow(total)
+    # plt.show()
+
+    show_img2 = np.array(img_after)
+    show_img2[best_y:best_y + templates[0].shape[0], best_x:best_x + templates[0].shape[1]] += 0.5 * rotate(
+        best_template,
+        best_angle,
+        mode='constant',
+        cval=0)
+
+    fig, ax = plt.subplots(ncols=3)
+    ax[0].imshow(img_after)
+    ax[1].imshow(show_img)
+    ax[1].set_title("n , m")
+    ax[2].imshow(show_img2)
+    ax[2].set_title("n x m")
+
+    return best_template, best_angle, best_y, best_x
 
 
 def rescaling(img_before, img_after):
@@ -413,17 +529,25 @@ def overlay(img_before, img_after, max_shift=4):
     if dx_pix > 0:
         img_after[:, dx_pix:] = img_after[:, :-dx_pix]
         img_after[:, :dx_pix] = np.max(img_after)
+        img_before = img_before[:, dx_pix:]
+        img_after = img_after[:, dx_pix:]
     elif dx_pix < 0:
         img_after[:, :dx_pix] = img_after[:, -dx_pix:]
         img_after[:, dx_pix:] = np.max(img_after)
+        img_before = img_before[:, :dx_pix]
+        img_after = img_after[:, :dx_pix]
     if dy_pix > 0:
         img_after[dy_pix:, :] = img_after[:-dy_pix, :]
         img_after[:dy_pix, :] = np.max(img_after)
+        img_before = img_before[dy_pix:, :]
+        img_after = img_after[dy_pix:, :]
     elif dy_pix < 0:
         img_after[:dy_pix, :] = img_after[-dy_pix:, :]
         img_after[dy_pix:, :] = np.max(img_after)
+        img_before = img_before[:dy_pix, :]
+        img_after = img_after[:dy_pix, :]
 
-    return img_after, shift
+    return img_before, img_after, shift
 
 
 def get_image(data_paths_before, data_paths_after, channel_before, channel_after, max_slices_proj=30,
@@ -485,7 +609,7 @@ def get_image(data_paths_before, data_paths_after, channel_before, channel_after
         img_before, img_after, magni = rescaling(img_before, img_after)
         print(f"scaling factor is: {magni}")
         # calculate the shift between the two images
-        img_after, shift = overlay(img_before, img_after, max_shift=4)
+        img_before, img_after, shift = overlay(img_before, img_after, max_shift=4)
         # shift is [dy, dx]
 
         # blurring the images
@@ -1621,12 +1745,12 @@ def detect_blobs(binary_end_result, min_thres=0.25, max_thres=0.5, min_circ=0.3,
                 circy, circx = circle_perimeter(center_y, center_x, radius,
                                                 shape=im.shape)
                 im[circy, circx] = (220, 20, 20, 255)
-                #im[circy + 1, circx] = (220, 20, 20, 255)
-                #im[circy, circx + 1] = (220, 20, 20, 255)
-                #im[circy + 1, circx + 1] = (220, 20, 20, 255)
-                #im[circy - 1, circx] = (220, 20, 20, 255)
-                #im[circy, circx - 1] = (220, 20, 20, 255)
-                #im[circy - 1, circx - 1] = (220, 20, 20, 255)
+                # im[circy + 1, circx] = (220, 20, 20, 255)
+                # im[circy, circx + 1] = (220, 20, 20, 255)
+                # im[circy + 1, circx + 1] = (220, 20, 20, 255)
+                # im[circy - 1, circx] = (220, 20, 20, 255)
+                # im[circy, circx - 1] = (220, 20, 20, 255)
+                # im[circy - 1, circx - 1] = (220, 20, 20, 255)
 
         ax.imshow(im)
         plt.show()
@@ -1639,7 +1763,6 @@ def from_binary_to_answer(binary_end_result, b_end_result_without, yxr):
     Returns:
           advice (float): in a range from 0 to 1 with 0 being no signal at all and 1 being there is definitely signal.
     """
-
 
 
 def show_line_detection_steps(img_after_blurred, edges, lines, lines2, after_grouping):
