@@ -125,7 +125,7 @@ img_blurred = downsize_image(img_blurred, factor)
 # template = crop_to_border(img, [x1, y1, x2, y2])
 template_size = int(img.shape[0]/2)
 num_width = 10
-templates = np.zeros((num_width, int(template_size/3), template_size))
+templates = np.zeros((num_width, int(template_size/2), template_size))
 widths = np.linspace(img.shape[0]/10, img.shape[0]/4, num_width)
 for i in range(num_width):
     border = int(template_size/2 - widths[i]/2)

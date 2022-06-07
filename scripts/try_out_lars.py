@@ -94,7 +94,7 @@ if __name__ == '__main__':
     max_slices = 30
     cropping = True  # if true, the last images will be cropped to only the mask
 
-    for nnn in np.arange(2, 3, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+    for nnn in np.arange(8, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
         print("dataset nr. {}".format(nnn + 1))
         print(data_paths_before[nnn])
         print(data_paths_after[nnn])
@@ -106,20 +106,29 @@ if __name__ == '__main__':
                                                                    mode='in_focus', proj_mode='max')
 
         img_before, img_after, img_before_blurred, img_after_blurred = pre_processing_data(img_before, img_after)
-        # img_after = downsize_image(gaussian_filter(img_after, sigma=5), 4)
+        # img_after = gaussian_filter(img_after, 1)
+        # fig, ax = plt.subplots(ncols=3)
+        # ax[0].imshow(img_after >= 0.125)
+        # ax[0].set_title("0.125")
+        # ax[1].imshow(img_after >= 0.1)
+        # ax[1].set_title("0.1")
+        # ax[2].imshow(img_after >= 0.075)
+        # ax[2].set_title("0.075")
 
-        match_template_to_image(img_before, img_after)
-        # mask_diff, mask_combined, combined = get_mask(img_before_blurred, img_after_blurred)
-        #
-        # masked_img, extents, binary_end, binary_end_without, key_points, yxr = analyze_data(img_after, mask_combined)
-        # masked_img2, extents2, binary_end2, binary_end_without2, key_points2, yxr2 = analyze_data(img_after, mask_diff)
-        #
-        # plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask_diff, masked_img,
-        #                  masked_img2, binary_end_without, binary_end_without2, cropping, extents, extents2)
+        best_template, best_angle, best_y, best_x = match_template_to_image(img_before, img_after)
+        template_mask = get_template_mask(img_after, best_template, best_angle, best_y, best_x)
 
-        # del img_before, img_after, img_before_blurred, img_after_blurred, \
-            # mask_combined, mask_diff, masked_img, masked_img2, binary_end, \
-            # binary_end2, meta_before, meta_after
+        mask_diff, mask_combined, combined = get_mask(img_before_blurred, img_after_blurred)
+
+        masked_img, extents, binary_end, binary_end_without, key_points, yxr = analyze_data(img_after, mask_combined)
+        masked_img2, extents2, binary_end2, binary_end_without2, key_points2, yxr2 = analyze_data(img_after, mask_diff)
+
+        plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask_diff, masked_img,
+                         masked_img2, binary_end_without, binary_end_without2, cropping, extents, extents2)
+
+        del img_before, img_after, img_before_blurred, img_after_blurred, \
+            mask_combined, mask_diff, masked_img, masked_img2, binary_end, \
+            binary_end2, meta_before, meta_after
         gc.collect()
 
         print("Successful!\n")
