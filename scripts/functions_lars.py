@@ -247,10 +247,11 @@ def match_template_to_image(img_before, img_after, factor=4, num_templates=10, n
     mid_y -= int(templates[0].shape[0] / 2)
     mid_x -= int(templates[0].shape[1] / 2)
 
-    left_y = int(mid_y - img_after.shape[0] / 5)
-    right_y = int(mid_y + img_after.shape[0] / 5)
-    left_x = int(mid_x - img_after.shape[1] / 5)
-    right_x = int(mid_x + img_after.shape[1] / 5)
+    h = 10
+    left_y = int(mid_y - img_after.shape[0] / h)
+    right_y = int(mid_y + img_after.shape[0] / h)
+    left_x = int(mid_x - img_after.shape[1] / h)
+    right_x = int(mid_x + img_after.shape[1] / h)
 
     if left_y < 0:
         left_y = 0
@@ -342,7 +343,7 @@ def get_template_mask(img_after, best_template, best_angle, best_y, best_x, fact
         x1 += 1
 
     y2 = np.max(np.where(best_template2[:, -1] > 0))
-    x2 = best_template2.shape[1]-1
+    x2 = best_template2.shape[1] - 1
     while best_template2[y2, x2] > 0:
         x2 -= 1
 
@@ -354,8 +355,8 @@ def get_template_mask(img_after, best_template, best_angle, best_y, best_x, fact
     angle = np.pi / 2 - (best_angle / 180 * np.pi)
     xrange = np.arange(mask.shape[1])
     for j in range(mask.shape[0]):
-        if angle < np.pi/2:
-            mask[j, :] = ((j-y1) < (xrange - x1) * np.tan(angle)) & ((j-y2) > (xrange - x2) * np.tan(angle))
+        if angle < np.pi / 2:
+            mask[j, :] = ((j - y1) < (xrange - x1) * np.tan(angle)) & ((j - y2) > (xrange - x2) * np.tan(angle))
         else:
             mask[j, :] = ((j - y1) > (xrange - x1) * np.tan(angle)) & ((j - y2) < (xrange - x2) * np.tan(angle))
 
@@ -1800,16 +1801,52 @@ def detect_blobs(binary_end_result, min_thres=0.25, max_thres=0.5, min_circ=0.3,
                 # im[circy - 1, circx - 1] = (220, 20, 20, 255)
 
         ax.imshow(im)
-        plt.show()
+        # plt.show()
 
     return key_points, yxr
 
 
-def from_binary_to_answer(binary_end_result, b_end_result_without, yxr):
+def from_blobs_to_binary(yxr, img_shape, mask, iter_closing=10, get_rid_of_bg=True):
+    binary_img = np.zeros(img_shape)
+    xrange = np.arange(img_shape[1])
+    for y, x, r in yxr:
+        for i in range(img_shape[0]):
+            binary_img[i, :] += ((i - y) ** 2 + (xrange - x) ** 2 < r ** 2)
+
+    binary_img = binary_closing(binary_img, structure=np.ones((3, 3)), iterations=iter_closing)
+
+    if get_rid_of_bg:
+        index_mask = np.where(mask)
+        # cropping the mask to match the image
+        if mask.shape != img_shape:
+            x_min = np.min(index_mask[1])
+            y_min = np.min(index_mask[0])
+            x_max = np.max(index_mask[1])
+            y_max = np.max(index_mask[0])
+            mask = mask[y_min:y_max + 1, x_min:x_max + 1]
+        # multiplying the signal with the boundaries of the mask
+        bound = binary_img * (1.0 * mask - 1.0 * binary_erosion(mask, iterations=iter_closing + 1))
+
+        # subtracting the boundary signal of the initial signal image
+        minus = binary_dilation(bound, mask=binary_img, iterations=0)  # * binary_end_result
+        b_img_without = 1.0 * binary_img - 1.0 * minus
+        b_img_without = np.array(b_img_without, dtype=bool)
+    else:
+        b_img_without = np.array(binary_img)
+
+    return binary_img, b_img_without
+
+
+def from_binary_to_answer(binary_end_result, masked_img, pixel_size):
     """
     Returns:
           advice (float): in a range from 0 to 1 with 0 being no signal at all and 1 being there is definitely signal.
     """
+    if np.sum(binary_end_result) == 0:
+        return 0
+    signal = np.sum(binary_end_result*masked_img) / np.sum(binary_end_result*pixel_size**2)
+    p_s = '%.3g' % signal
+    print(f"the amount of signal per square meter: {p_s}")
 
 
 def show_line_detection_steps(img_after_blurred, edges, lines, lines2, after_grouping):
