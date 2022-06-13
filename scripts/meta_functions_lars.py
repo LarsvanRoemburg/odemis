@@ -39,7 +39,7 @@ def pre_processing_data(img_before, img_after, blur=25, max_shift=4):
 
 
 def get_mask(img_before_blurred, img_after_blurred, max_dist_s=1 / 30, min_dist_c=1 / 25, max_dist_c=1 / 5,
-             max_angle_diff=np.pi / 8, plotting_lines=False):
+             max_angle_diff=np.pi / 8, low_thres=0.1, high_thres=1.5, plotting_lines=False):
     """
     Here all the functions working towards a mask of the milling site are combined. First, the line detection functions
     are used for creating a mask with the found lines. Second, a mask is created with the intensity differences in the
@@ -57,6 +57,10 @@ def get_mask(img_before_blurred, img_after_blurred, max_dist_s=1 / 30, min_dist_
         max_angle_diff (float):         The maximum angle difference lines or groups of lines can have to be
                                         combined or grouped in combine_and_constraint_lines(), group_single_lines() and
                                         couple_groups_of_lines(). This value is in the unit radians.
+        low_thres (float):              The lower threshold of the hysteresis in the hough line detection.
+                                        (see find_lines() for more).
+        high_thres (float):              The higher threshold of the hysteresis in the hough line detection.
+                                        (see find_lines() for more).
         plotting_lines (bool):          A boolean to indicate if we want to plot the found lines or not before
                                         continuing to the next step.
 
@@ -73,7 +77,8 @@ def get_mask(img_before_blurred, img_after_blurred, max_dist_s=1 / 30, min_dist_
     mid_milling_site = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred)
 
     # here I try line detection
-    x_lines, y_lines, lines, edges = find_lines(img_after_blurred, low_thres_edges=0, high_thres_edges=0)
+    x_lines, y_lines, lines, edges = find_lines(img_after_blurred, low_thres_edges=low_thres,
+                                                high_thres_edges=high_thres)
     # apparently for mammalian cell samples, setting the hysteresis threshold to 0 and 0 is better
 
     # look at the lines and see if they have the same angle and rough distance between them

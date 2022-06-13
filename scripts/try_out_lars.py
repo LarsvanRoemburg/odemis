@@ -1,3 +1,8 @@
+import logging
+
+logging.basicConfig(level=logging.INFO)  # ,
+                    # format="%(asctime)s  %(levelname)-7s %(module)s:%(lineno)d %(message)s")
+
 from meta_functions_lars import *
 import gc
 
@@ -81,6 +86,9 @@ data_paths_true_masks = ["/home/victoria/Documents/Lars/data/1/true_mask_FOV2_GF
                          "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/negative_examples/yeast/"
                          "true_mask_FOV6_checkpoint02_ch00.tiff"
                          ]
+yeast_not_mammalian = [True, ]
+signal_in_data = ['No', 'Yes', 'Yes', 'No', 'Yes', 'Yes', 'Yes', 'No', 'Yes', 'Yes or Maybe', 'Maybe', 'Yes', 'Yes',
+                  'Yes', 'Maybe', 'Yes', 'No', 'No']
 
 if __name__ == '__main__':
     ll = len(data_paths_before)
@@ -94,18 +102,24 @@ if __name__ == '__main__':
     max_slices = 30
     cropping = True  # if true, the last images will be cropped to only the mask
 
-    for nnn in np.arange(0, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+    # signal_in_yes = []
+    # signal_in_no = []
+    # signal_in_maybe = []
+
+    for nnn in np.arange(1, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
         print("dataset nr. {}".format(nnn + 1))
         print(data_paths_before[nnn])
         print(data_paths_after[nnn])
-
+        logging.info('starting ROI detection workflow')
         # convert the image to a numpy array and set a threshold for outliers in the image / z-stack
         # for data before milling
         img_before, img_after, meta_before, meta_after = get_image(data_paths_before[nnn], data_paths_after[nnn],
                                                                    channel_before[nnn], channel_after[nnn],
                                                                    mode='in_focus', proj_mode='max')
-
+        logging.info("get_image() done")
         img_before, img_after, img_before_blurred, img_after_blurred = pre_processing_data(img_before, img_after)
+
+        logging.info("preprocessing done")
         # img_after = gaussian_filter(img_after, 1)
         # fig, ax = plt.subplots(ncols=3)
         # ax[0].imshow(img_after >= 0.125)
@@ -114,25 +128,38 @@ if __name__ == '__main__':
         # ax[1].set_title("0.1")
         # ax[2].imshow(img_after >= 0.075)
         # ax[2].set_title("0.075")
-
+        match_template_to_image(img_before, img_after)
         # best_template, best_angle, best_y, best_x = match_template_to_image(img_before, img_after)
         # template_mask = get_template_mask(img_after, best_template, best_angle, best_y, best_x)
+        logging.info("template matching done")
 
-        mask_diff, mask_combined, combined = get_mask(img_before_blurred, img_after_blurred)
-
-        masked_img, extents, binary_end, binary_end_without, key_points, yxr = analyze_data(img_after, mask_combined)
+        # mask_diff, mask_combined, combined = get_mask(img_before_blurred, img_after_blurred, plotting_lines=True)
+        # logging.info("get_mask() done")
+        #
+        # masked_img, extents, binary_end, binary_end_without, key_points, yxr = analyze_data(img_after, mask_combined)
         # masked_img2, extents2, binary_end2, binary_end_without2, key_points2, yxr2 = analyze_data(img_after, mask_diff)
-
-        binary_img, b_img_without = from_blobs_to_binary(yxr, masked_img.shape, mask_combined)
-        from_binary_to_answer(binary_img, masked_img, meta_after['Pixel size'][0])
+        # logging.info("analyzing the data done")
+        #
+        # binary_img, b_img_without = from_blobs_to_binary(yxr, masked_img.shape, mask_combined)
+        # fig, ax = plt.subplots(ncols=2)
+        # ax[0].imshow(binary_img)
+        # ax[1].imshow(b_img_without)
+        # signal, answer = from_binary_to_answer(b_img_without, masked_img, meta_after['Pixel size'][0])
+        # logging.info('final answer done')
+        # if 'Yes' in signal_in_data[nnn]:
+        #     signal_in_yes.append(signal)
+        # elif 'No' in signal_in_data[nnn]:
+        #     signal_in_no.append(signal)
+        # elif 'Maybe' in signal_in_data[nnn]:
+        #     signal_in_maybe.append(signal)
 
         # plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask_diff, masked_img,
         #                  masked_img2, binary_end_without, binary_end_without2, cropping, extents, extents2)
-
+        # logging.info('plotting results done')
         # del img_before, img_after, img_before_blurred, img_after_blurred, \
         #     mask_combined, mask_diff, masked_img, masked_img2, binary_end, \
         #     binary_end2, meta_before, meta_after
         gc.collect()
 
-        print("Successful!\n")
+        logging.info("ROI detection workflow was successful!\n")
     plt.show()

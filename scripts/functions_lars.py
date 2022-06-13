@@ -45,7 +45,7 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
 
     if data[0].shape[0] == 1:  # if it is 1, there are multiple slices
         num_z = len(data[which_channel][0][0])
-        print("#z-slices: {}".format(num_z))
+        logging.debug("#z-slices: {}".format(num_z))
         dat = np.array(data[which_channel][0][0])  # to convert the data to a [num_slices, N, M] shape
         sharp = np.zeros(dat.shape[0])
 
@@ -55,7 +55,7 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
         histo = histo / histo[-1] * 100
         plc = np.min(np.where(histo > outlier_cutoff))
         thr_out = bins[plc] / 2 + bins[plc + 1] / 2
-        print("outlier threshold is at {}".format(thr_out))
+        logging.debug("outlier threshold is at {}".format(thr_out))
         dat[dat > thr_out] = thr_out
 
         # to create the square corner coordinates in which we will find the gradient
@@ -105,20 +105,19 @@ def find_focus_z_slice_and_outlier_cutoff(data, milling_pos_y, milling_pos_x, wh
         if minmax[1] > dat.shape[0]:
             minmax[1] = dat.shape[0]
 
-        print(f"In focus slice is: {in_focus}.")
-        print(f"first slice: {minmax[0]}")
-        print(f"last slice: {minmax[1]}")
+        logging.debug(f"In focus slice is: {in_focus}.")
+        logging.debug(f"first slice: {minmax[0]}")
+        logging.debug(f"last slice: {minmax[1]}")
         # the z-projection
         if mode == 'max':
             img = np.max(dat[minmax[0]:minmax[1]], axis=0)
-            print(dat[minmax[0]:minmax[1]].shape)
         elif mode == 'mean':
             img = np.mean(dat[minmax[0]:minmax[1]], axis=0)
         else:
             logging.warning("Mode input not recognized, maximum intensity projection is used.")
             img = np.max(dat[minmax[0]:minmax[1]], axis=0)
     else:  # if data[0].shape[0] != 1, there is only one slice
-        print("#z-slices: 1")
+        logging.debug("#z-slices: 1")
         in_focus = 0
         img = np.array(data[which_channel], dtype=int)
         del data
@@ -156,7 +155,7 @@ def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, outlier_c
 
     if data[0].shape[0] == 1:  # if it is 1, there are multiple slices
         num_z = len(data[which_channel][0][0])
-        print("#z-slices: {}".format(num_z))
+        logging.debug("#z-slices: {}".format(num_z))
 
         # if there are too many slices, take the #max_slices in the middle
         if num_z <= max_slices:
@@ -172,7 +171,7 @@ def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, outlier_c
         plc = np.min(np.where(histo > outlier_cutoff))
         thr_out = bins[plc] / 2 + bins[plc + 1] / 2
 
-        print("outlier threshold is at {}".format(thr_out))
+        logging.debug("outlier threshold is at {}".format(thr_out))
         img[img > thr_out] = thr_out
 
         # the z-projection
@@ -185,7 +184,7 @@ def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, outlier_c
             img = np.max(img, axis=0)
 
     else:  # if data[0].shape[0] != 1, there is only one slice
-        print("#z-slices before: 1")
+        logging.debug("#z-slices before: 1")
         img = np.array(data[which_channel], dtype=int)
         del data
 
@@ -230,107 +229,133 @@ def match_template_to_image(img_before, img_after, factor=4, num_templates=10, n
     mid_y = np.where(diff == np.max(diff))[0][0]
     mid_x = np.where(diff == np.max(diff))[1][0]
 
-    img_after[img_after > thres] = thres
+    histo, bins = np.histogram(img_after, bins=2000)
+    histo = np.cumsum(histo)
+    histo = histo / histo[-1] * 100
+    plc = np.min(np.where(histo > 10))
+    thr_out = bins[plc] / 2 + bins[plc + 1] / 2
 
-    # x1, y1, x2, y2 = bounding_box(draw_section_contour(img_after), offset=10)
-    # template = crop_to_border(img_after, [x1, y1, x2, y2])
-    template_size = int(img_after.shape[0] / 2)
-    num_width = num_templates
-    templates = np.zeros((num_width, int(template_size), template_size))
-    widths = np.linspace(img_after.shape[0] / 20, img_after.shape[0] / 4, num_width)
-    for i in range(num_width):
-        border = int(template_size / 2 - widths[i] / 2)
-        templates[i, :, :border] = np.linspace(0, thres, border)  # thres
-        templates[i, :, -border:] = np.linspace(thres, 0, border)  # thres
-
-    result = np.array(match_template(img_after, templates[0]))
-    mid_y -= int(templates[0].shape[0] / 2)
-    mid_x -= int(templates[0].shape[1] / 2)
-
-    h = 10
-    left_y = int(mid_y - img_after.shape[0] / h)
-    right_y = int(mid_y + img_after.shape[0] / h)
-    left_x = int(mid_x - img_after.shape[1] / h)
-    right_x = int(mid_x + img_after.shape[1] / h)
-
-    if left_y < 0:
-        left_y = 0
-    if left_x < 0:
-        left_x = 0
-    if right_y >= result.shape[0]:
-        right_y = result.shape[0] - 1
-    if right_x >= result.shape[1]:
-        right_x = result.shape[1] - 1
-
-    start_angle = -10
-    stop_angle = 10
-    angles = np.linspace(start_angle, stop_angle, num_angles, endpoint=True)
-
-    total = np.zeros((len(templates), result.shape[0], result.shape[1]))
-    for i, template in enumerate(templates):
-        result = match_template(img_after, template)
-        total[i, left_y:right_y, left_x:right_x] = result[left_y:right_y, left_x:right_x]
-        # total[i, :, :] = result
-        print(f'template nr. {i}')
-
-    print(f"best template is nr. {np.where(total == np.max(total))[0][0]}")
-    best_template = templates[np.where(total == np.max(total))[0][0]]
-
-    total = np.zeros((len(angles), result.shape[0], result.shape[1]))
-
-    for a, angle in enumerate(angles):
-        result = match_template(img_after, rotate(best_template, angles[a], mode='constant', cval=0))
-        total[a, left_y:right_y, left_x:right_x] = result[left_y:right_y, left_x:right_x]
-        # total[i, :, :] = result
-        print(f"angle = {angle}")
-
-    best_angle = angles[np.where(total == np.max(total))[0][0]]
-    print(f"best angle = {best_angle}")
-    best_y = np.where(total == np.max(total))[1][0]
-    best_x = np.where(total == np.max(total))[2][0]
-
-    show_img = np.array(img_after)
-    show_img[best_y:best_y + templates[0].shape[0], best_x:best_x + templates[0].shape[1]] += 0.5 * rotate(
-        best_template,
-        best_angle,
-        mode='constant',
-        cval=0)
-
-    total = np.zeros((len(templates), len(angles), result.shape[0], result.shape[1]))
-    for i, template in enumerate(templates):
-        print(f'template nr. {i}')
-        for a, angle in enumerate(angles):
-            result = match_template(img_after, rotate(template, angles[a], mode='constant', cval=0))
-            total[i, a, left_y:right_y, left_x:right_x] = result[left_y:right_y, left_x:right_x]
-            # total[i, :, :] = result
-            print(f"angle = {angle}")
-
-    print(np.where(total == np.max(total)))
-    best_template = templates[np.where(total == np.max(total))[0][0]]
-    best_angle = angles[np.where(total == np.max(total))[1][0]]
-    best_y = np.where(total == np.max(total))[2][0]
-    best_x = np.where(total == np.max(total))[3][0]
-
-    # total = total / len(np.arange(start_angle, stop_angle, angle_step))
-    # plt.imshow(total)
+    fig, ax = plt.subplots(nrows=2, ncols=3)
+    ax[0, 0].imshow(img_after)
+    ax[0, 1].imshow(img_after > thres)
+    ax[0, 1].set_title("thres at 0.2")
+    ax[0, 2].imshow(img_after > thr_out)
+    ax[0, 2].set_title("thres at 10%")
+    plc = np.min(np.where(histo > 15))
+    thr_out = bins[plc] / 2 + bins[plc + 1] / 2
+    ax[1, 0].imshow(img_after > thr_out)
+    ax[1, 0].set_title("thres at 15%")
+    plc = np.min(np.where(histo > 5))
+    thr_out = bins[plc] / 2 + bins[plc + 1] / 2
+    ax[1, 1].imshow(img_after > thr_out)
+    ax[1, 1].set_title('thres at 5%')
+    plc = np.min(np.where(histo > 1))
+    thr_out = bins[plc] / 2 + bins[plc + 1] / 2
+    ax[1, 2].imshow(img_after > thr_out)
+    ax[1, 2].set_title("thres at 1%")
     # plt.show()
 
-    show_img2 = np.array(img_after)
-    show_img2[best_y:best_y + templates[0].shape[0], best_x:best_x + templates[0].shape[1]] += 0.5 * rotate(
-        best_template,
-        best_angle,
-        mode='constant',
-        cval=0)
+    # img_after[img_after > thres] = thres
+    #
+    # # x1, y1, x2, y2 = bounding_box(draw_section_contour(img_after), offset=10)
+    # # template = crop_to_border(img_after, [x1, y1, x2, y2])
+    # template_size = int(img_after.shape[0] / 2)
+    # num_width = num_templates
+    # templates = np.zeros((num_width, int(template_size), template_size))
+    # widths = np.linspace(img_after.shape[0] / 20, img_after.shape[0] / 4, num_width)
+    # for i in range(num_width):
+    #     border = int(template_size / 2 - widths[i] / 2)
+    #     templates[i, :, :border] = np.linspace(0, thres, border)  # thres
+    #     templates[i, :, -border:] = np.linspace(thres, 0, border)  # thres
+    #
+    # result = match_template(img_after, templates[0])
+    # mid_y -= int(templates[0].shape[0] / 2)
+    # mid_x -= int(templates[0].shape[1] / 2)
+    #
+    # h = 10
+    # left_y = int(mid_y - img_after.shape[0] / h)
+    # right_y = int(mid_y + img_after.shape[0] / h)
+    # left_x = int(mid_x - img_after.shape[1] / h)
+    # right_x = int(mid_x + img_after.shape[1] / h)
+    #
+    # if left_y < 0:
+    #     left_y = 0
+    # if left_x < 0:
+    #     left_x = 0
+    # if right_y >= result.shape[0]:
+    #     right_y = result.shape[0] - 1
+    # if right_x >= result.shape[1]:
+    #     right_x = result.shape[1] - 1
+    #
+    # start_angle = -10
+    # stop_angle = 10
+    # angles = np.linspace(start_angle, stop_angle, num_angles, endpoint=True)
+    #
+    # total = np.zeros((len(templates), result.shape[0], result.shape[1]))
+    # for i, template in enumerate(templates):
+    #     result = match_template(img_after, template)
+    #     total[i, left_y:right_y, left_x:right_x] = result[left_y:right_y, left_x:right_x]
+    #     # total[i, :, :] = result
+    #     # print(f'template nr. {i}')
+    #
+    # logging.debug(f"best template is nr. {np.where(total == np.max(total))[0][0]}")
+    # best_template = templates[np.where(total == np.max(total))[0][0]]
+    #
+    # total = np.zeros((len(angles), result.shape[0], result.shape[1]))
+    #
+    # for a, angle in enumerate(angles):
+    #     result = match_template(img_after, rotate(best_template, angles[a], mode='constant', cval=0))
+    #     total[a, left_y:right_y, left_x:right_x] = result[left_y:right_y, left_x:right_x]
+    #     # total[i, :, :] = result
+    #     # print(f"angle = {angle}")
+    #
+    # best_angle = angles[np.where(total == np.max(total))[0][0]]
+    # logging.debug(f"best angle = {best_angle}")
+    # best_y = np.where(total == np.max(total))[1][0]
+    # best_x = np.where(total == np.max(total))[2][0]
+    #
+    # show_img = np.array(img_after)
+    # show_img[best_y:best_y + templates[0].shape[0], best_x:best_x + templates[0].shape[1]] += 0.5 * rotate(
+    #     best_template,
+    #     best_angle,
+    #     mode='constant',
+    #     cval=0)
+    #
+    # total = np.zeros((len(templates), len(angles), result.shape[0], result.shape[1]))
+    # for i, template in enumerate(templates):
+    #     # print(f'template nr. {i}')
+    #     for a, angle in enumerate(angles):
+    #         result = match_template(img_after, rotate(template, angles[a], mode='constant', cval=0))
+    #         total[i, a, left_y:right_y, left_x:right_x] = result[left_y:right_y, left_x:right_x]
+    #         # total[i, :, :] = result
+    #         # print(f"angle = {angle}")
+    #
+    # logging.debug(f'best template match at : {np.where(total == np.max(total))}')
+    # best_template = templates[np.where(total == np.max(total))[0][0]]
+    # best_angle = angles[np.where(total == np.max(total))[1][0]]
+    # best_y = np.where(total == np.max(total))[2][0]
+    # best_x = np.where(total == np.max(total))[3][0]
+    #
+    # # total = total / len(np.arange(start_angle, stop_angle, angle_step))
+    # # plt.imshow(total)
+    # # plt.show()
+    #
+    # show_img2 = np.array(img_after)
+    # show_img2[best_y:best_y + templates[0].shape[0], best_x:best_x + templates[0].shape[1]] += 0.5 * rotate(
+    #     best_template,
+    #     best_angle,
+    #     mode='constant',
+    #     cval=0)
+    #
+    # fig, ax = plt.subplots(ncols=3)
+    # ax[0].imshow(img_after)
+    # ax[1].imshow(show_img)
+    # ax[1].set_title("n , m")
+    # ax[2].imshow(show_img2)
+    # ax[2].set_title("n x m")
+    # plt.show()
 
-    fig, ax = plt.subplots(ncols=3)
-    ax[0].imshow(img_after)
-    ax[1].imshow(show_img)
-    ax[1].set_title("n , m")
-    ax[2].imshow(show_img2)
-    ax[2].set_title("n x m")
-    plt.show()
-
-    return best_template, best_angle, best_y, best_x
+    # return best_template, best_angle, best_y, best_x
 
 
 def get_template_mask(img_after, best_template, best_angle, best_y, best_x, factor=4):
@@ -570,8 +595,8 @@ def overlay(img_before, img_after, max_shift=4):
     dy_pix = int(shift[0])
     dx_pix = int(shift[1])
 
-    print("dx is {} pixels".format(dx_pix))
-    print("dy is {} pixels".format(dy_pix))
+    logging.debug("dx is {} pixels".format(dx_pix))
+    logging.debug("dy is {} pixels".format(dy_pix))
 
     # shifting the after milling image towards the before milling image to overlap nicely
     if dx_pix > 0:
@@ -655,7 +680,7 @@ def get_image(data_paths_before, data_paths_after, channel_before, channel_after
 
         # rescaling one image to the other if necessary
         img_before, img_after, magni = rescaling(img_before, img_after)
-        print(f"scaling factor is: {magni}")
+        logging.debug(f"scaling factor is: {magni}")
         # calculate the shift between the two images
         img_before, img_after, shift = overlay(img_before, img_after, max_shift=4)
         # shift is [dy, dx]
@@ -667,8 +692,8 @@ def get_image(data_paths_before, data_paths_after, channel_before, channel_after
         # finding the estimates for the milling site position
         milling_x_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x')
         milling_y_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='y')
-        print(f"milling pos y = {milling_y_pos}")
-        print(f"milling pos x = {milling_x_pos}")
+        logging.debug(f"milling pos y = {milling_y_pos}")
+        logging.debug(f"milling pos x = {milling_x_pos}")
 
         # finding the in focus slice.
         # because the raw data is not yet scaled properly, the position needs to be adjusted for that
@@ -743,7 +768,8 @@ def blur_and_norm(img, blur=25):
 
     Parameters:
         img (ndarray):              The image to be blurred and normalized.
-        blur (int):                 The sigma for the gaussian blurring, the higher the number, the more blurring occurs.
+        blur (int):                 The sigma for the gaussian blurring, the higher the number, the more blurring
+                                    occurs.
 
     Returns:
         img (ndarray):              The unblurred, normalized image before milling.
@@ -897,13 +923,13 @@ def find_lines(img_after_blurred, blur=10, low_thres_edges=0.1, high_thres_edges
                             maxLineGap=max_line_gap)
 
     if lines is not None:
-        print("{} lines detected.".format(len(lines)))
+        logging.info("{} lines detected.".format(len(lines)))
         # here we extract the middle points of the lines
         x_lines = (lines.T[2] / 2 + lines.T[0] / 2).T.reshape((len(lines),))
         y_lines = (lines.T[3] / 2 + lines.T[1] / 2).T.reshape((len(lines),))
         return x_lines, y_lines, lines, edges
     else:
-        print("No lines are detected at all!")
+        logging.warning("No lines are detected at all!")
         return None, None, None, None
 
 
@@ -977,9 +1003,9 @@ def combine_and_constraint_lines(x_lines, y_lines, lines, angle_lines, mid_milli
     # in which region you leave the lines exist: y_const < y < y_shape - y_const
     max_dist_for_merge = img_shape[0] * max_dist  # the max distance lines can have for merging
 
-    print("mid_milling_site = {}".format(mid_milling_site))
-    print("lower x boundary = {}".format(mid_milling_site - x_constraint))
-    print("upper x boundary = {}".format(mid_milling_site + x_constraint))
+    logging.debug("mid_milling_site = {}".format(mid_milling_site))
+    logging.debug("lower x boundary = {}".format(mid_milling_site - x_constraint))
+    logging.debug("upper x boundary = {}".format(mid_milling_site + x_constraint))
 
     # for each line there exists a spot on num_lines_present, if set to 0 it is discarded
     num_lines_present = np.ones(lines.shape[0])
@@ -1168,7 +1194,7 @@ def combine_biggest_groups(biggest, groups, x_lines, y_lines, angle_lines, max_d
     m being the number of the biggest groups.
 
     Parameters:
-         biggest (tuple):               A tuple of where the biggest combinations of groups are in the
+         biggest (ndarray):             An ndarray of where the biggest combinations of groups are in the
                                         size_groups_combined.
          groups (list):                 A list with all the groups created. Each group has the index values of the
                                         lines in that group. So lines[groups[0]] gives you the lines of the first group.
@@ -1229,7 +1255,7 @@ def last_group_selection(groups, biggest, merge_big_groups, x_lines, x_pos_mil, 
     Parameters:
         groups (list):                  A list with all the groups created. Each group has the index values of the
                                         lines in that group. So lines[groups[0]] gives you the lines of the first group.
-        biggest (tuple):                A tuple of where the biggest combinations of groups are in the
+        biggest (ndarray):              An ndarray of where the biggest combinations of groups are in the
                                         size_groups_combined.
         merge_big_groups (ndarray):     An m x m matrix with 0 values for where the biggest groups couldn't be combined
                                         and with > 0 values for where they could be combined. The value there is the
@@ -1443,7 +1469,6 @@ def create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, i
             groups2 = group_single_lines(x_lines3, y_lines3, lines3, angle_lines3,
                                          max_distance=img_shape[1] / inv_max_dist, max_angle_diff=max_angle)
 
-    # print(len(groups2))
     if len(groups2) > 1:
         x_left_mean = int(np.mean(x_lines3[groups2[0]]))
         y_left_mean = int(np.mean(y_lines3[groups2[0]]))
@@ -1532,9 +1557,9 @@ def combine_masks(mask_diff, mask_lines, mask_lines_all, thres_diff=70, thres_li
         overlap_diff = overlap_diff_all
         overlap_lines = overlap_lines_all
 
-    # print("The overlap with mask diff is {}%.".format(overlap_diff))
-    # print("The overlap with mask lines is {}%.".format(overlap_lines))
-    # print("The line mask will be used : {}".format((overlap_diff > thres_diff) | (overlap_lines > thres_lines)))
+    logging.debug("The overlap with mask diff is {}%.".format(overlap_diff))
+    logging.debug("The overlap with mask lines is {}%.".format(overlap_lines))
+    logging.debug("The line mask will be used : {}".format((overlap_diff > thres_diff) | (overlap_lines > thres_lines)))
 
     # if the overlap is big enough, we combine the masks
     if (overlap_diff > thres_diff) | (overlap_lines > thres_lines):
@@ -1830,23 +1855,39 @@ def from_blobs_to_binary(yxr, img_shape, mask, iter_closing=10, get_rid_of_bg=Tr
         # subtracting the boundary signal of the initial signal image
         minus = binary_dilation(bound, mask=binary_img, iterations=0)  # * binary_end_result
         b_img_without = 1.0 * binary_img - 1.0 * minus
-        b_img_without = np.array(b_img_without, dtype=bool)
+        mes = np.zeros(b_img_without.shape)
+        mes[int(mes.shape[0]/10):int(-mes.shape[0]/10), :] = 1
+        b_img_without = np.array(b_img_without * mes, dtype=bool)
     else:
         b_img_without = np.array(binary_img)
 
     return binary_img, b_img_without
 
 
-def from_binary_to_answer(binary_end_result, masked_img, pixel_size):
+def from_binary_to_answer(binary_end_result, masked_img, pixel_size, upper_lim=6.5e13, lower_lim=4.5e13):
     """
     Returns:
           advice (float): in a range from 0 to 1 with 0 being no signal at all and 1 being there is definitely signal.
     """
     if np.sum(binary_end_result) == 0:
-        return 0
+        p_s = '%.3g' % 0
+        logging.info(f"the amount of signal per square meter: {p_s}")
+        logging.info("There is still signal in the milling site?\nNo")
+        return 0, 'No'
+    if pixel_size > 0.001:
+        pixel_size *= 10**(-6)
     signal = np.sum(binary_end_result*masked_img) / np.sum(binary_end_result*pixel_size**2)
     p_s = '%.3g' % signal
-    print(f"the amount of signal per square meter: {p_s}")
+    logging.info(f"the amount of signal per square meter: {p_s}")
+    if signal > upper_lim:
+        answer = 'Yes'
+    elif signal < lower_lim:
+        answer = 'No'
+    else:
+        answer = 'Maybe'
+    logging.info(f"There is still signal in the milling site?\n{answer}")
+
+    return signal, answer
 
 
 def show_line_detection_steps(img_after_blurred, edges, lines, lines2, after_grouping):
@@ -1870,11 +1911,11 @@ def show_line_detection_steps(img_after_blurred, edges, lines, lines2, after_gro
         image = cv2.bitwise_not(image)
         image = image * 0.8
         image1 = deepcopy(image)
-        image2 = deepcopy(image)
+        # image2 = deepcopy(image)
         image3 = deepcopy(image)
 
         if len(after_grouping) > 0:
-            print("{} lines after grouping".format(len(after_grouping)))
+            logging.info("{} lines after grouping".format(len(after_grouping)))
 
             # the lines after grouping drawn in image3
             for points in lines2[after_grouping]:
@@ -1883,7 +1924,7 @@ def show_line_detection_steps(img_after_blurred, edges, lines, lines2, after_gro
                 # Draw the lines joining the points on the original image
                 cv2.line(image3, (x1, y1), (x2, y2), 255, 2)
         else:
-            print("0 lines after grouping")
+            logging.info("0 lines after grouping")
 
         # the lines before grouping drawn in image
         for points in lines:
@@ -1915,7 +1956,7 @@ def show_line_detection_steps(img_after_blurred, edges, lines, lines2, after_gro
         ax[2, 1].set_title('after grouping')
         plt.show()
     else:
-        print("No lines were detected so nothing can be shown.")
+        logging.warning("No lines were detected so nothing can be shown.")
 
 
 def plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask, masked_img, masked_img2,
