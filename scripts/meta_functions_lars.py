@@ -157,6 +157,13 @@ def analyze_data(img_after, mask_combined, cropping=True, threshold_end=0.25, op
     binary_end, binary_end_without = create_binary_end_image(mask_combined, masked_img, threshold=threshold_end,
                                                              open_close=open_close, rid_of_back_signal=rid_bg)
     key_points, yxr = detect_blobs(gaussian_filter(masked_img, sigma=1), min_circ=0.3, max_circ=1.01, min_area=10,
-                                   max_area=50**2, plotting=True)
+                                   max_area=50**2, plotting=plotting)
+    binary_img, b_img_without = from_blobs_to_binary(yxr, masked_img.shape, mask_combined)
+    try_again = False
+    if np.sum(b_img_without) == 0:
+        key_points, yxr = detect_blobs(gaussian_filter(masked_img, sigma=1), min_thres=0.15, max_thres=0.3,
+                                       min_circ=0.3, max_circ=1.01, min_area=10, max_area=50 ** 2, plotting=plotting)
+        try_again = True
+        logging.info("No blobs were found with the standard threshold, a lower threshold is set.")
 
-    return masked_img, extents, binary_end, binary_end_without, key_points, yxr
+    return masked_img, extents, binary_end, binary_end_without, key_points, yxr, try_again

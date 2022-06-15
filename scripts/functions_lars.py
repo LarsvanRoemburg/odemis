@@ -232,130 +232,130 @@ def match_template_to_image(img_before, img_after, factor=4, num_templates=10, n
     histo, bins = np.histogram(img_after, bins=2000)
     histo = np.cumsum(histo)
     histo = histo / histo[-1] * 100
-    plc = np.min(np.where(histo > 10))
+    plc = np.min(np.where(histo > 20))
     thr_out = bins[plc] / 2 + bins[plc + 1] / 2
 
-    fig, ax = plt.subplots(nrows=2, ncols=3)
-    ax[0, 0].imshow(img_after)
-    ax[0, 1].imshow(img_after > thres)
-    ax[0, 1].set_title("thres at 0.2")
-    ax[0, 2].imshow(img_after > thr_out)
-    ax[0, 2].set_title("thres at 10%")
-    plc = np.min(np.where(histo > 15))
-    thr_out = bins[plc] / 2 + bins[plc + 1] / 2
-    ax[1, 0].imshow(img_after > thr_out)
-    ax[1, 0].set_title("thres at 15%")
-    plc = np.min(np.where(histo > 5))
-    thr_out = bins[plc] / 2 + bins[plc + 1] / 2
-    ax[1, 1].imshow(img_after > thr_out)
-    ax[1, 1].set_title('thres at 5%')
-    plc = np.min(np.where(histo > 1))
-    thr_out = bins[plc] / 2 + bins[plc + 1] / 2
-    ax[1, 2].imshow(img_after > thr_out)
-    ax[1, 2].set_title("thres at 1%")
+    # fig, ax = plt.subplots(nrows=2, ncols=3)
+    # ax[0, 0].imshow(img_after)
+    # ax[0, 1].imshow(img_after > thres)
+    # ax[0, 1].set_title("thres at 0.2")
+    # ax[0, 2].imshow(img_after > thr_out)
+    # ax[0, 2].set_title("thres at 10%")
+    # plc = np.min(np.where(histo > 15))
+    # thr_out = bins[plc] / 2 + bins[plc + 1] / 2
+    # ax[1, 0].imshow(img_after > thr_out)
+    # ax[1, 0].set_title("thres at 15%")
+    # plc = np.min(np.where(histo > 5))
+    # thr_out = bins[plc] / 2 + bins[plc + 1] / 2
+    # ax[1, 1].imshow(img_after > thr_out)
+    # ax[1, 1].set_title('thres at 5%')
+    # plc = np.min(np.where(histo > 1))
+    # thr_out = bins[plc] / 2 + bins[plc + 1] / 2
+    # ax[1, 2].imshow(img_after > thr_out)
+    # ax[1, 2].set_title("thres at 1%")
     # plt.show()
 
-    # img_after[img_after > thres] = thres
+    img_after[img_after > thres] = thres
     #
     # # x1, y1, x2, y2 = bounding_box(draw_section_contour(img_after), offset=10)
     # # template = crop_to_border(img_after, [x1, y1, x2, y2])
-    # template_size = int(img_after.shape[0] / 2)
-    # num_width = num_templates
-    # templates = np.zeros((num_width, int(template_size), template_size))
-    # widths = np.linspace(img_after.shape[0] / 20, img_after.shape[0] / 4, num_width)
-    # for i in range(num_width):
-    #     border = int(template_size / 2 - widths[i] / 2)
-    #     templates[i, :, :border] = np.linspace(0, thres, border)  # thres
-    #     templates[i, :, -border:] = np.linspace(thres, 0, border)  # thres
-    #
-    # result = match_template(img_after, templates[0])
-    # mid_y -= int(templates[0].shape[0] / 2)
-    # mid_x -= int(templates[0].shape[1] / 2)
-    #
-    # h = 10
-    # left_y = int(mid_y - img_after.shape[0] / h)
-    # right_y = int(mid_y + img_after.shape[0] / h)
-    # left_x = int(mid_x - img_after.shape[1] / h)
-    # right_x = int(mid_x + img_after.shape[1] / h)
-    #
-    # if left_y < 0:
-    #     left_y = 0
-    # if left_x < 0:
-    #     left_x = 0
-    # if right_y >= result.shape[0]:
-    #     right_y = result.shape[0] - 1
-    # if right_x >= result.shape[1]:
-    #     right_x = result.shape[1] - 1
-    #
-    # start_angle = -10
-    # stop_angle = 10
-    # angles = np.linspace(start_angle, stop_angle, num_angles, endpoint=True)
-    #
-    # total = np.zeros((len(templates), result.shape[0], result.shape[1]))
-    # for i, template in enumerate(templates):
-    #     result = match_template(img_after, template)
-    #     total[i, left_y:right_y, left_x:right_x] = result[left_y:right_y, left_x:right_x]
-    #     # total[i, :, :] = result
-    #     # print(f'template nr. {i}')
-    #
-    # logging.debug(f"best template is nr. {np.where(total == np.max(total))[0][0]}")
-    # best_template = templates[np.where(total == np.max(total))[0][0]]
-    #
-    # total = np.zeros((len(angles), result.shape[0], result.shape[1]))
-    #
-    # for a, angle in enumerate(angles):
-    #     result = match_template(img_after, rotate(best_template, angles[a], mode='constant', cval=0))
-    #     total[a, left_y:right_y, left_x:right_x] = result[left_y:right_y, left_x:right_x]
-    #     # total[i, :, :] = result
-    #     # print(f"angle = {angle}")
-    #
-    # best_angle = angles[np.where(total == np.max(total))[0][0]]
-    # logging.debug(f"best angle = {best_angle}")
-    # best_y = np.where(total == np.max(total))[1][0]
-    # best_x = np.where(total == np.max(total))[2][0]
-    #
-    # show_img = np.array(img_after)
-    # show_img[best_y:best_y + templates[0].shape[0], best_x:best_x + templates[0].shape[1]] += 0.5 * rotate(
-    #     best_template,
-    #     best_angle,
-    #     mode='constant',
-    #     cval=0)
-    #
-    # total = np.zeros((len(templates), len(angles), result.shape[0], result.shape[1]))
-    # for i, template in enumerate(templates):
-    #     # print(f'template nr. {i}')
-    #     for a, angle in enumerate(angles):
-    #         result = match_template(img_after, rotate(template, angles[a], mode='constant', cval=0))
-    #         total[i, a, left_y:right_y, left_x:right_x] = result[left_y:right_y, left_x:right_x]
-    #         # total[i, :, :] = result
-    #         # print(f"angle = {angle}")
-    #
-    # logging.debug(f'best template match at : {np.where(total == np.max(total))}')
-    # best_template = templates[np.where(total == np.max(total))[0][0]]
-    # best_angle = angles[np.where(total == np.max(total))[1][0]]
-    # best_y = np.where(total == np.max(total))[2][0]
-    # best_x = np.where(total == np.max(total))[3][0]
-    #
-    # # total = total / len(np.arange(start_angle, stop_angle, angle_step))
-    # # plt.imshow(total)
-    # # plt.show()
-    #
-    # show_img2 = np.array(img_after)
-    # show_img2[best_y:best_y + templates[0].shape[0], best_x:best_x + templates[0].shape[1]] += 0.5 * rotate(
-    #     best_template,
-    #     best_angle,
-    #     mode='constant',
-    #     cval=0)
-    #
-    # fig, ax = plt.subplots(ncols=3)
-    # ax[0].imshow(img_after)
-    # ax[1].imshow(show_img)
-    # ax[1].set_title("n , m")
-    # ax[2].imshow(show_img2)
-    # ax[2].set_title("n x m")
+    template_size = int(img_after.shape[0] / 2)
+    num_width = num_templates
+    templates = np.zeros((num_width, int(template_size), template_size))
+    widths = np.linspace(img_after.shape[0] / 20, img_after.shape[0] / 4, num_width)
+    for i in range(num_width):
+        border = int(template_size / 2 - widths[i] / 2)
+        templates[i, :, :border] = np.linspace(0, thres, border)  # thres
+        templates[i, :, -border:] = np.linspace(thres, 0, border)  # thres
+
+    result = match_template(img_after, templates[0])
+    mid_y -= int(templates[0].shape[0] / 2)
+    mid_x -= int(templates[0].shape[1] / 2)
+
+    h = 10
+    left_y = int(mid_y - img_after.shape[0] / h)
+    right_y = int(mid_y + img_after.shape[0] / h)
+    left_x = int(mid_x - img_after.shape[1] / h)
+    right_x = int(mid_x + img_after.shape[1] / h)
+
+    if left_y < 0:
+        left_y = 0
+    if left_x < 0:
+        left_x = 0
+    if right_y >= result.shape[0]:
+        right_y = result.shape[0] - 1
+    if right_x >= result.shape[1]:
+        right_x = result.shape[1] - 1
+
+    start_angle = -10
+    stop_angle = 10
+    angles = np.linspace(start_angle, stop_angle, num_angles, endpoint=True)
+
+    total = np.zeros((len(templates), result.shape[0], result.shape[1]))
+    for i, template in enumerate(templates):
+        result = match_template(img_after, template)
+        total[i, left_y:right_y, left_x:right_x] = result[left_y:right_y, left_x:right_x]
+        # total[i, :, :] = result
+        # print(f'template nr. {i}')
+
+    logging.debug(f"best template is nr. {np.where(total == np.max(total))[0][0]}")
+    best_template = templates[np.where(total == np.max(total))[0][0]]
+
+    total = np.zeros((len(angles), result.shape[0], result.shape[1]))
+
+    for a, angle in enumerate(angles):
+        result = match_template(img_after, rotate(best_template, angles[a], mode='constant', cval=0))
+        total[a, left_y:right_y, left_x:right_x] = result[left_y:right_y, left_x:right_x]
+        # total[i, :, :] = result
+        # print(f"angle = {angle}")
+
+    best_angle = angles[np.where(total == np.max(total))[0][0]]
+    logging.debug(f"best angle = {best_angle}")
+    best_y = np.where(total == np.max(total))[1][0]
+    best_x = np.where(total == np.max(total))[2][0]
+
+    show_img = np.array(img_after)
+    show_img[best_y:best_y + templates[0].shape[0], best_x:best_x + templates[0].shape[1]] += 0.5 * rotate(
+        best_template,
+        best_angle,
+        mode='constant',
+        cval=0)
+
+    total = np.zeros((len(templates), len(angles), result.shape[0], result.shape[1]))
+    for i, template in enumerate(templates):
+        # print(f'template nr. {i}')
+        for a, angle in enumerate(angles):
+            result = match_template(img_after, rotate(template, angles[a], mode='constant', cval=0))
+            total[i, a, left_y:right_y, left_x:right_x] = result[left_y:right_y, left_x:right_x]
+            # total[i, :, :] = result
+            # print(f"angle = {angle}")
+
+    logging.debug(f'best template match at : {np.where(total == np.max(total))}')
+    best_template = templates[np.where(total == np.max(total))[0][0]]
+    best_angle = angles[np.where(total == np.max(total))[1][0]]
+    best_y = np.where(total == np.max(total))[2][0]
+    best_x = np.where(total == np.max(total))[3][0]
+
+    # total = total / len(np.arange(start_angle, stop_angle, angle_step))
+    # plt.imshow(total)
     # plt.show()
 
-    # return best_template, best_angle, best_y, best_x
+    show_img2 = np.array(img_after)
+    show_img2[best_y:best_y + templates[0].shape[0], best_x:best_x + templates[0].shape[1]] += 0.5 * rotate(
+        best_template,
+        best_angle,
+        mode='constant',
+        cval=0)
+
+    fig, ax = plt.subplots(ncols=3)
+    ax[0].imshow(img_after)
+    ax[1].imshow(show_img)
+    ax[1].set_title("n , m")
+    ax[2].imshow(show_img2)
+    ax[2].set_title("n x m")
+    plt.show()
+
+    return best_template, best_angle, best_y, best_x
 
 
 def get_template_mask(img_after, best_template, best_angle, best_y, best_x, factor=4):
@@ -758,7 +758,7 @@ def get_image(data_paths_before, data_paths_after, channel_before, channel_after
     return img_before, img_after, meta_before, meta_after
 
 
-def blur_and_norm(img, blur=25):
+def blur_and_norm(img2, blur=25):
     """
     Because the images before and after milling have different intensity profiles and do not have the exact same noise,
     normalization and blurring is required for being able to compare the two images. Here the image is first
@@ -775,6 +775,7 @@ def blur_and_norm(img, blur=25):
         img (ndarray):              The unblurred, normalized image before milling.
         img_blurred (ndarray):      The blurred, normalized image before milling.
     """
+    img = np.array(img2)  # so the original input will not be changed
 
     # blurring the images
     img_blurred = gaussian_filter(img, sigma=blur)
@@ -1610,7 +1611,7 @@ def combine_masks(mask_diff, mask_lines, mask_lines_all, thres_diff=70, thres_li
         return mask_combined, False
 
 
-def create_masked_img(img_after, mask, cropping=False):
+def create_masked_img(img_after, mask, cropping=True):
     """
     Multiplies the mask with the image after milling, so you only see the signal within the mask.
     If cropping set to True and there is a mask, the outputted image is cropped to show only the mask.
@@ -1838,7 +1839,7 @@ def from_blobs_to_binary(yxr, img_shape, mask, iter_closing=10, get_rid_of_bg=Tr
         for i in range(img_shape[0]):
             binary_img[i, :] += ((i - y) ** 2 + (xrange - x) ** 2 < r ** 2)
 
-    binary_img = binary_closing(binary_img, structure=np.ones((3, 3)), iterations=iter_closing)
+    binary_img2 = binary_closing(binary_img, structure=np.ones((3, 3)), iterations=iter_closing)
 
     if get_rid_of_bg:
         index_mask = np.where(mask)
@@ -1850,21 +1851,25 @@ def from_blobs_to_binary(yxr, img_shape, mask, iter_closing=10, get_rid_of_bg=Tr
             y_max = np.max(index_mask[0])
             mask = mask[y_min:y_max + 1, x_min:x_max + 1]
         # multiplying the signal with the boundaries of the mask
-        bound = binary_img * (1.0 * mask - 1.0 * binary_erosion(mask, iterations=iter_closing + 1))
+        bound = 1.0 * mask - 1.0 * binary_erosion(mask, iterations=iter_closing + 1)
+        bound[:int(bound.shape[0]/10), :] = 1
+        bound[-int(bound.shape[0] / 10):, :] = 1
+        bound *= binary_img2
 
         # subtracting the boundary signal of the initial signal image
-        minus = binary_dilation(bound, mask=binary_img, iterations=0)  # * binary_end_result
+        minus = binary_dilation(bound, mask=binary_img2, iterations=0)  # * binary_end_result
         b_img_without = 1.0 * binary_img - 1.0 * minus
-        mes = np.zeros(b_img_without.shape)
-        mes[int(mes.shape[0]/10):int(-mes.shape[0]/10), :] = 1
-        b_img_without = np.array(b_img_without * mes, dtype=bool)
+        b_img_without[b_img_without < 0] = 0
+        # mes = np.zeros(b_img_without.shape)
+        # mes[int(mes.shape[0]/10):int(-mes.shape[0]/10), :] = 1
+        b_img_without = np.array(b_img_without * binary_img2, dtype=bool)
     else:
         b_img_without = np.array(binary_img)
 
     return binary_img, b_img_without
 
 
-def from_binary_to_answer(binary_end_result, masked_img, pixel_size, upper_lim=6.5e13, lower_lim=4.5e13):
+def from_binary_to_answer(binary_end_result, masked_img, pixel_size, try_again, upper_lim=2.8e19, lower_lim=2e19):
     """
     Returns:
           advice (float): in a range from 0 to 1 with 0 being no signal at all and 1 being there is definitely signal.
@@ -1874,9 +1879,10 @@ def from_binary_to_answer(binary_end_result, masked_img, pixel_size, upper_lim=6
         logging.info(f"the amount of signal per square meter: {p_s}")
         logging.info("There is still signal in the milling site?\nNo")
         return 0, 'No'
-    if pixel_size > 0.001:
+    if pixel_size > 1e-3:
         pixel_size *= 10**(-6)
-    signal = np.sum(binary_end_result*masked_img) / np.sum(binary_end_result*pixel_size**2)
+
+    signal = np.sum(binary_end_result*masked_img) * (pixel_size**2 / 1e-20) / np.sum(binary_end_result*pixel_size**2)
     p_s = '%.3g' % signal
     logging.info(f"the amount of signal per square meter: {p_s}")
     if signal > upper_lim:
@@ -1885,8 +1891,11 @@ def from_binary_to_answer(binary_end_result, masked_img, pixel_size, upper_lim=6
         answer = 'No'
     else:
         answer = 'Maybe'
-    logging.info(f"There is still signal in the milling site?\n{answer}")
 
+    if try_again and answer == 'Yes':
+        answer = 'Maybe'
+
+    logging.info(f"Is there still signal in the milling site? -> {answer}")
     return signal, answer
 
 
