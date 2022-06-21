@@ -200,6 +200,18 @@ def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, outlier_c
 
 
 def downsize_image(image, factor=4):
+    """
+    Here we downsize the image from a nxm to a n/f x m/f size with f being the downscale factor.
+
+    Parameters:
+        image (ndarray):    The input image.
+        factor (float):     The factor of downscaling.
+
+    Returns:
+        new_img (ndarray):  The downscaled image.
+
+    """
+
     temp_img = np.zeros((int(image.shape[0] / factor), image.shape[1]))
     new_img = np.zeros((int(image.shape[0] / factor), int(image.shape[1] / factor)))
 
@@ -212,6 +224,10 @@ def downsize_image(image, factor=4):
 
 
 def match_template_to_image(img_before, img_after, factor=4, num_templates=10, num_angles=21, thres=0.2):
+    """
+    Parameters:
+
+    """
     img_before = downsize_image(img_before, factor)
     img_before = gaussian_filter(img_before, 1)
     img_after = downsize_image(img_after, factor)
@@ -359,6 +375,9 @@ def match_template_to_image(img_before, img_after, factor=4, num_templates=10, n
 
 
 def get_template_mask(img_after, best_template, best_angle, best_y, best_x, factor=4):
+    """
+
+    """
     mask = np.zeros(img_after.shape)
     best_template2 = rotate(best_template, best_angle, mode='constant', cval=0)
 
@@ -767,7 +786,7 @@ def blur_and_norm(img2, blur=25):
     because everything below this is probably noise.
 
     Parameters:
-        img (ndarray):              The image to be blurred and normalized.
+        img2 (ndarray):             The image to be blurred and normalized.
         blur (int):                 The sigma for the gaussian blurring, the higher the number, the more blurring
                                     occurs.
 

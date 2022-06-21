@@ -126,15 +126,7 @@ if __name__ == '__main__':
         img_before, img_after, img_before_blurred, img_after_blurred = pre_processing_data(img_before, img_after)
 
         logging.info("preprocessing done")
-        # img_after = gaussian_filter(img_after, 1)
-        # fig, ax = plt.subplots(ncols=3)
-        # ax[0].imshow(img_after >= 0.125)
-        # ax[0].set_title("0.125")
-        # ax[1].imshow(img_after >= 0.1)
-        # ax[1].set_title("0.1")
-        # ax[2].imshow(img_after >= 0.075)
-        # ax[2].set_title("0.075")
-        # match_template_to_image(img_before, img_after)
+
         # best_template, best_angle, best_y, best_x = match_template_to_image(img_before, img_after)
         # template_mask = get_template_mask(img_after, best_template, best_angle, best_y, best_x)
         logging.info("template matching done")
