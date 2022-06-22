@@ -225,8 +225,21 @@ def downsize_image(image, factor=4):
 
 def match_template_to_image(img_before, img_after, factor=4, num_templates=10, num_angles=21, thres=0.2):
     """
-    Parameters:
+    Bla
 
+    Parameters:
+        img_before (ndarray):
+        img_after (ndarray):
+        factor (float):
+        num_templates (int):
+        num_angles (int):
+        thres (float):
+
+    Returns:
+        best_template (ndarray):
+        best_angle (float):
+        best_y (int):
+        best_x (int):
     """
     img_before = downsize_image(img_before, factor)
     img_before = gaussian_filter(img_before, 1)
@@ -376,6 +389,18 @@ def match_template_to_image(img_before, img_after, factor=4, num_templates=10, n
 
 def get_template_mask(img_after, best_template, best_angle, best_y, best_x, factor=4):
     """
+    Bla
+
+    Parameters:
+        img_after (ndarray):
+        best_template (ndarray):
+        best_angle (ndarray):
+        best_y (int):
+        best_x (int):
+        factor (float):
+
+    Returns:
+        mask (ndarray):
 
     """
     mask = np.zeros(img_after.shape)
@@ -1852,6 +1877,20 @@ def detect_blobs(binary_end_result, min_thres=0.25, max_thres=0.5, min_circ=0.3,
 
 
 def from_blobs_to_binary(yxr, img_shape, mask, iter_closing=10, get_rid_of_bg=True):
+    """
+    Bla
+
+    Parameters:
+        yxr (ndarray):
+        img_shape (tuple):
+        mask (ndarray):
+        iter_closing (int):
+        get_rid_of_bg (bool):
+
+    Returns:
+        binary_img (ndarray):
+        b_img_without (ndarray):
+    """
     binary_img = np.zeros(img_shape)
     xrange = np.arange(img_shape[1])
     for y, x, r in yxr:
@@ -1890,8 +1929,19 @@ def from_blobs_to_binary(yxr, img_shape, mask, iter_closing=10, get_rid_of_bg=Tr
 
 def from_binary_to_answer(binary_end_result, masked_img, pixel_size, try_again, upper_lim=2.8e19, lower_lim=2e19):
     """
+    Bla
+
+    Parameters:
+        binary_end_result (ndarray):
+        masked_img (ndarray):
+        pixel_size (float):
+        try_again (bool):
+        upper_lim (float):
+        lower_lim (float):
+
     Returns:
-          advice (float): in a range from 0 to 1 with 0 being no signal at all and 1 being there is definitely signal.
+          signal (float):
+          answer (string):
     """
     if np.sum(binary_end_result) == 0:
         p_s = '%.3g' % 0

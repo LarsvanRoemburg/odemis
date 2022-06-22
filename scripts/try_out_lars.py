@@ -85,6 +85,89 @@ data_paths_true_masks = ["/home/victoria/Documents/Lars/data/1/true_mask_FOV2_GF
                          "/home/victoria/Documents/Lars/data/Meteor_data_for_Lars/negative_examples/yeast/"
                          "true_mask_FOV6_checkpoint02_ch00.tiff"
                          ]
+
+# 2nd testdataset is with two milling sites
+test_data_pico_before = [
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam1_pre-milling_pico.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam2_pre-milling_pico.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam5_pre-milling_pico.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam9_pre-milling_pico.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam5_pre-mill_picogreen.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam7_pre-mill_picogreen.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam8_pre-mill_picogreen.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam11_pre-mill_picogreen.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid3/lam10_pre-mill_pico.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/Yeast/lamella1_beforeMilling_EGFP.tif"
+]
+
+test_data_pico_after = [
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam1-_postp3_pico.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam2_postp3_picov2.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam5_postp3_pico.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam9_postp3_pico.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam5_post-mill_pico.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam7_post-mill_pico.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam8_post-mill_pico.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam11_post-mill_pico.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid3/lam10_post-mill_pico.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/Yeast/lamella1_Postp3_exp1.1sec-43-83_GFP.tif"
+]
+
+# 1st testdataset is with two milling sites
+test_data_mito_before = [
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam2_pre-milling_mitoT.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam5_pre-milling_mitoT.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam9_pre-milling_mitoT.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam5_pre-mill_mito.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam7_pre-mill_mito.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam8_pre-mill_mito.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam11_pre-mill_mito.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid3/lam10_pre-mill_mitoT.tiff"
+]
+
+test_data_mito_after = ["/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam2_postp3_mitoTv2.tiff",
+                        "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam5_postp3_mitoT.tiff",
+                        "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam9_postp3_mitoT.tiff",
+                        "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam5_post-mill_mito.tiff",
+                        "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam7_post-mill_mito.tiff",
+                        "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam8_post-mill_mito.tiff",
+                        "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam11_post-mill_mito.tiff",
+                        "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid3/lam10_post-mill_mito.tiff"
+                        ]
+
+# 2nd testdataset is with two milling sites
+test_data_intra_before = [
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam1_pre-milling_intracell.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam2_pre-milling_intracell.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam5_pre-milling_intracell.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam9_pre-milling_intracell.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam5_pre-mill_intracell.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam7_pre-mill_intracell.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam8_pre-mill_intracell.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam11_pre-mill_intracell.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid3/lam10_pre-mill_intracell.tiff"
+]
+
+test_data_intra_after = [
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam1-_postp3_intracell.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam2_postp3_intracellv2.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam5_postp3_intracell.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid1/Lam9_postp3_intracell.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam5_post-mill_intracell.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam7_post-mill_intracell.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam8_post-mill_intracell.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid2/lam11_post-mill_intracell.tiff",
+    "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid3/lam10_post-mill_intracell.tiff"
+]
+
+test_data_GFP_before = ["/home/victoria/Documents/Lars/data/test data/NEW_202205/Yeast_eGFP_Atg8/FOV1_new_checkpoint_00.tiff",
+                        "/home/victoria/Documents/Lars/data/test data/NEW_202205/Yeast_eGFP_Atg8/FOV3_new_checkpoint_00.tiff",
+                        "/home/victoria/Documents/Lars/data/test data/NEW_202205/Yeast_eGFP_Ede1/EA010_8_FOV3_checkpoint_00_1.tiff"]
+
+test_data_GFP_after = ["/home/victoria/Documents/Lars/data/test data/NEW_202205/Yeast_eGFP_Atg8/FOV1_new_final_lamella.tiff",
+                       "/home/victoria/Documents/Lars/data/test data/NEW_202205/Yeast_eGFP_Atg8/FOV3_new_final_lamella.tiff",
+                       "/home/victoria/Documents/Lars/data/test data/NEW_202205/Yeast_eGFP_Ede1/EA010_8_FOV3_final.tiff"]
+
 yeast_not_mammalian = np.ones(18, dtype=bool)
 yeast_not_mammalian[8:12] = False
 signal_in_data = ['No', 'Yes', 'Yes', 'No', 'Yes', 'Yes', 'Yes', 'No', 'Yes', 'Yes', 'Maybe', 'Yes', 'Yes',
@@ -93,7 +176,7 @@ signal_in_data = ['No', 'Yes', 'Yes', 'No', 'Yes', 'Yes', 'Yes', 'No', 'Yes', 'Y
 if __name__ == '__main__':
     ll = len(data_paths_before)
     channel_before = np.zeros(ll, dtype=int)
-    channel_before[7] = 1
+    # channel_before[7] = 1
     channel_after = np.zeros(ll, dtype=int)
 
     threshold_mask = 0.3
@@ -111,14 +194,16 @@ if __name__ == '__main__':
     signal_in_maybe2 = []
     answers2 = []
 
-    for nnn in np.arange(16, 18, 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+    for nnn in np.arange(0, len(test_data_GFP_before), 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
         print("dataset nr. {}".format(nnn + 1))
-        print(data_paths_before[nnn])
-        print(data_paths_after[nnn])
+        print(test_data_GFP_before[nnn])
+        print(test_data_GFP_after[nnn])
+        # print(data_paths_before[nnn])
+        # print(data_paths_after[nnn])
         logging.info('starting ROI detection workflow')
         # convert the image to a numpy array and set a threshold for outliers in the image / z-stack
         # for data before milling
-        img_before, img_after, meta_before, meta_after = get_image(data_paths_before[nnn], data_paths_after[nnn],
+        img_before, img_after, meta_before, meta_after = get_image(test_data_GFP_before[nnn], test_data_GFP_after[nnn],
                                                                    channel_before[nnn], channel_after[nnn],
                                                                    mode='in_focus', proj_mode='max')
 
@@ -131,12 +216,12 @@ if __name__ == '__main__':
         # template_mask = get_template_mask(img_after, best_template, best_angle, best_y, best_x)
         logging.info("template matching done")
 
-        mask_diff, mask_combined, combined = get_mask(img_before_blurred, img_after_blurred, plotting_lines=False)
+        mask_diff, mask_combined, combined = get_mask(img_before_blurred, img_after_blurred, plotting_lines=True)
         logging.info("get_mask() done")
 
         masked_img, extents, binary_end, binary_end_without, key_points, yxr, try_again = analyze_data(img_after,
                                                                                                        mask_combined,
-                                                                                                       plotting=False)
+                                                                                                       plotting=True)
         masked_img2, extents2, binary_end2, binary_end_without2, key_points2, yxr2, try_again2 = analyze_data(img_after,
                                                                                                               mask_diff)
         logging.info("analyzing the data done")
@@ -152,24 +237,24 @@ if __name__ == '__main__':
         signal2, answer2 = from_binary_to_answer(b_img_without, masked_img, meta_after['Pixel size'][0], try_again)
         # 2 works better!
         logging.info('final answer done')
-        if 'Yes' in signal_in_data[nnn]:
-            signal_in_yes.append(signal)
-            signal_in_yes2.append(signal2)
-        elif 'No' in signal_in_data[nnn]:
-            signal_in_no.append(signal)
-            signal_in_no2.append(signal2)
-        elif 'Maybe' in signal_in_data[nnn]:
-            signal_in_maybe.append(signal)
-            signal_in_maybe2.append(signal2)
-        answers.append(answer)
-        answers2.append(answer2)
+        # if 'Yes' in signal_in_data[nnn]:
+        #     signal_in_yes.append(signal)
+        #     signal_in_yes2.append(signal2)
+        # elif 'No' in signal_in_data[nnn]:
+        #     signal_in_no.append(signal)
+        #     signal_in_no2.append(signal2)
+        # elif 'Maybe' in signal_in_data[nnn]:
+        #     signal_in_maybe.append(signal)
+        #     signal_in_maybe2.append(signal2)
+        # answers.append(answer)
+        # answers2.append(answer2)
 
         print(f"the signal intensity/m2 is: {'%.3g' % signal2}")
         print(f"the predicted answer is: {answer2}")
-        print(f"the correct answer is: {signal_in_data[nnn]}")
+        # print(f"the correct answer is: {signal_in_data[nnn]}")
 
-        # plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask_diff, masked_img,
-        #                  masked_img2, binary_end_without, binary_end_without2, cropping, extents, extents2)
+        plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask_diff, masked_img,
+                         masked_img2, binary_end_without, binary_end_without2, cropping, extents, extents2)
         logging.info('plotting results done')
         del img_before, img_after, img_before_blurred, img_after_blurred, \
             mask_combined, mask_diff, masked_img, masked_img2, binary_end, \
@@ -179,11 +264,11 @@ if __name__ == '__main__':
         logging.info("ROI detection workflow was successful!\n")
 
     # plt.show()
-    res = 0
-    res2 = 0
-    for i in range(len(answers)):
-        res += 1 * (answers[i] == signal_in_data[i])
-        res2 += 1 * (answers2[i] == signal_in_data[i])
-    print(f"{res} out of {len(answers)} are correctly predicted with binary thresholding")
-    print(f"{res2} out of {len(answers)} are correctly predicted with blob detection")
-    print("Ending data set")
+    # res = 0
+    # res2 = 0
+    # for i in range(len(answers)):
+    #     res += 1 * (answers[i] == signal_in_data[i])
+    #     res2 += 1 * (answers2[i] == signal_in_data[i])
+    # print(f"{res} out of {len(answers)} are correctly predicted with binary thresholding")
+    # print(f"{res2} out of {len(answers)} are correctly predicted with blob detection")
+    # print("Ending data set")
