@@ -201,7 +201,8 @@ def z_projection_and_outlier_cutoff(data, max_slices, which_channel=0, outlier_c
 
 def downsize_image(image, factor=4):
     """
-    Here we downsize the image from a nxm to a n/f x m/f size with f being the downscale factor.
+    Here we downsize the image from a nxm to a n/f x m/f size with f being the downscale factor. If n % f != 0 and/or
+    m % f != 0, the remainder pixels of the nxm image are not used in the downsizing to the n/f x m/f image.
 
     Parameters:
         image (ndarray):    The input image.
@@ -629,10 +630,6 @@ def overlay(img_before, img_after, max_shift=4):
     else:
         logging.warning("In overlay(): No maximum was found in the convolution. No shift is applied.")
         shift = np.array([[0], [0]])
-    # else:
-    #     # just do no shift
-    #     logging.warning("In overlay(): No maximum was found in the convolution. No shift is applied.")
-    #     shift = np.array([[0], [0]])
 
     img_after = img_after + mean_after
 
@@ -1347,10 +1344,6 @@ def last_group_selection(groups, biggest, merge_big_groups, x_lines, x_pos_mil, 
                 for z in range(2):
                     for x in groups[biggest[s][biggest2[z][0]]]:
                         after_grouping.append(x)
-            # groups[biggest[0][biggest2[0]]]
-            # groups[biggest[1][biggest2[0]]]
-            # groups[biggest[0][biggest2[1]]]
-            # groups[biggest[1][biggest2[1]]]
 
     else:
         # if no biggest groups merge, chose the one closest to the x_pos of the milling site.
@@ -1412,38 +1405,6 @@ def couple_groups_of_lines(groups, x_lines, y_lines, angle_lines, x_pos_mil, min
             merge_big_groups = combine_biggest_groups(biggest, groups, x_lines, y_lines, angle_lines, max_dist=min_dist,
                                                       max_angle_diff=max_angle_diff)
             after_grouping = last_group_selection(groups, biggest, merge_big_groups, x_lines, x_pos_mil, angle_lines)
-        # if some biggest groups can be combined, find the biggest connection between all biggest groups
-        # if np.sum(merge_big_groups) != 0:
-        #     groups2 = []
-        #     for x, y in np.array(np.where(merge_big_groups)).T:
-        #         set_in_group2 = False
-        #         for r in range(len(groups2)):
-        #             if x in groups2[r] and y in groups2[r]:
-        #                 set_in_group2 = True
-        #             elif x in groups2[r] and y not in groups2[r]:
-        #                 groups2[r].append(y)
-        #                 set_in_group2 = True
-        #             elif y in groups2[r] and x not in groups2[r]:
-        #                 groups2[r].append(x)
-        #                 set_in_group2 = True
-        #         if not set_in_group2:
-        #             groups2.append([x, y])
-        #
-        #     b = 0
-        #     final_group = 0
-        #     # find the combination which is the biggest after merging the biggest groups
-        #     for r in range(len(groups2)):
-        #         groups2[r] = np.unique(groups2[r])
-        #         if len(groups2[r]) > b:
-        #             b = len(groups2[r])
-        #             final_group = r
-        #
-        #     # adding the lines from the biggest group to the output
-        #     for i in groups2[final_group]:
-        #         for j in groups[biggest[0][i]]:
-        #             after_grouping.append(j)
-        #         for k in groups[biggest[1][i]]:
-        #             after_grouping.append(k)
 
         else:  # there is only one group the biggest
             # adding the lines from the biggest group to the output
@@ -1506,6 +1467,7 @@ def create_line_mask(after_grouping, x_lines2, y_lines2, lines2, angle_lines2, i
 
     # if we really want to use all the lines from the line detection, we will loosen the criteria iteratively until
     # we have two groups of lines: left and right. Otherwise, just the first two groups will be used.
+    # update: not sure if this use all lines is the way to go...
     if all_groups:
         while len(groups2) > 2:
             inv_max_dist -= 1
@@ -1691,7 +1653,7 @@ def create_masked_img(img_after, mask, cropping=True):
         y_max = img_after.shape[0]
 
     masked_img[0, 0] = 1  # to give the images the same color scale,
-    # if you get rid of this, also get rid of it in the test
+    # if you get rid of this, also get rid of it in the test case
 
     extents = (x_min, x_max, y_max, y_min)
     return masked_img, extents
@@ -1855,6 +1817,7 @@ def detect_blobs(binary_end_result, min_thres=0.25, max_thres=0.5, min_circ=0.3,
             yxr[u, 2] = int(key_points[u].size / 2)  # the size is the diameter
     else:
         yxr = np.array([])
+
     # Draw them if specified
     if plotting:
         fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(10, 4))
@@ -1863,33 +1826,31 @@ def detect_blobs(binary_end_result, min_thres=0.25, max_thres=0.5, min_circ=0.3,
                 circy, circx = circle_perimeter(center_y, center_x, radius,
                                                 shape=im.shape)
                 im[circy, circx] = (220, 20, 20, 255)
-                # im[circy + 1, circx] = (220, 20, 20, 255)
-                # im[circy, circx + 1] = (220, 20, 20, 255)
-                # im[circy + 1, circx + 1] = (220, 20, 20, 255)
-                # im[circy - 1, circx] = (220, 20, 20, 255)
-                # im[circy, circx - 1] = (220, 20, 20, 255)
-                # im[circy - 1, circx - 1] = (220, 20, 20, 255)
 
         ax.imshow(im)
-        # plt.show()
+        plt.show()
 
     return key_points, yxr
 
 
 def from_blobs_to_binary(yxr, img_shape, mask, iter_closing=10, get_rid_of_bg=True):
     """
-    Bla
+    Here the function converts the blob coordinates and sizes outputted from detect_blobs() to a binary image of those
+    blobs.
 
     Parameters:
-        yxr (ndarray):
-        img_shape (tuple):
-        mask (ndarray):
-        iter_closing (int):
-        get_rid_of_bg (bool):
+        yxr (ndarray):              the y,x position and the radius of the blob in a numpy array.
+        img_shape (tuple):          The shape of the masked image on which the blob detection was performed.
+        mask (ndarray):             The mask used on the image after milling, it is here used for knowing where the
+                                    boundaries of the milling site are to get rid of signal at the boundaries if wanted.
+        iter_closing (int):         iter_closing is the width of the boundaries of the milling site in pixels.
+        get_rid_of_bg (bool):       A boolean with which is stated if the signal at the boundary needs to be discarded
+                                    or not.
 
     Returns:
-        binary_img (ndarray):
-        b_img_without (ndarray):
+        binary_img (ndarray):       The binary image of the blobs.
+        b_img_without (ndarray):    The binary image of the blobs without blobs at the boundaries of the milling site.
+                                    If get_rid_of_bg is set to False, this is the same binary image as binary_img.
     """
     binary_img = np.zeros(img_shape)
     xrange = np.arange(img_shape[1])
@@ -1901,13 +1862,14 @@ def from_blobs_to_binary(yxr, img_shape, mask, iter_closing=10, get_rid_of_bg=Tr
 
     if get_rid_of_bg:
         index_mask = np.where(mask)
-        # cropping the mask to match the image
+        # cropping the mask to match the cropped image
         if mask.shape != img_shape:
             x_min = np.min(index_mask[1])
             y_min = np.min(index_mask[0])
             x_max = np.max(index_mask[1])
             y_max = np.max(index_mask[0])
             mask = mask[y_min:y_max + 1, x_min:x_max + 1]
+
         # multiplying the signal with the boundaries of the mask
         bound = 1.0 * mask - 1.0 * binary_erosion(mask, iterations=iter_closing + 1)
         bound[:int(bound.shape[0]/10), :] = 1
@@ -1915,11 +1877,9 @@ def from_blobs_to_binary(yxr, img_shape, mask, iter_closing=10, get_rid_of_bg=Tr
         bound *= binary_img2
 
         # subtracting the boundary signal of the initial signal image
-        minus = binary_dilation(bound, mask=binary_img2, iterations=0)  # * binary_end_result
+        minus = binary_dilation(bound, mask=binary_img2, iterations=0)
         b_img_without = 1.0 * binary_img - 1.0 * minus
         b_img_without[b_img_without < 0] = 0
-        # mes = np.zeros(b_img_without.shape)
-        # mes[int(mes.shape[0]/10):int(-mes.shape[0]/10), :] = 1
         b_img_without = np.array(b_img_without * binary_img2, dtype=bool)
     else:
         b_img_without = np.array(binary_img)
@@ -1927,31 +1887,39 @@ def from_blobs_to_binary(yxr, img_shape, mask, iter_closing=10, get_rid_of_bg=Tr
     return binary_img, b_img_without
 
 
-def from_binary_to_answer(binary_end_result, masked_img, pixel_size, try_again, upper_lim=2.8e19, lower_lim=2e19):
+def from_binary_to_answer(binary_end_result, masked_img, try_again, upper_lim=0.28, lower_lim=0.2):
     """
-    Bla
+    Here the function creates a final answer to the question: "Is the ROI still present after milling?". It uses the
+    binary image from the create_binary_end_image() or from_blobs_to_binary() and the masked image after milling from
+    create_masked_img() to get the pixel values of the blobs found by one of these two methods. The mean is calculated
+    of these pixel values and this mean determines what the answer will be. If the mean is low, the answer is set to no,
+    if the mean is average, the answer is set to maybe and if the mean is high the answer is set to yes.
 
     Parameters:
-        binary_end_result (ndarray):
-        masked_img (ndarray):
-        pixel_size (float):
-        try_again (bool):
-        upper_lim (float):
-        lower_lim (float):
+        binary_end_result (ndarray):    The binary image (the output) from the function create_binary_end_image() or
+                                        from_blobs_to_binary(). It is the binary image of where there is probably
+                                        signal.
+        masked_img (ndarray):           The original image after milling within the milling site, the output from
+                                        create_masked_img().
+        try_again (bool):               A boolean for the blob detection method to state if the blob detection needed
+                                        to use a lower threshold to detect blobs. If so, the answer is set to maybe if
+                                        the signal within these blobs is higher than the lower limit (or higher limit!).
+        upper_lim (float):              If the mean intensity per pixel is above this limit, the answer is yes. If it
+                                        is below this limit and above the lower limit, the answer is maybe.
+        lower_lim (float):              If the mean intensity per pixel is below this limit, the answer is no. If it
+                                        is above this limit and below the upper limit, the answer is maybe.
 
     Returns:
-          signal (float):
-          answer (string):
+          signal (float):               The mean intensity value per pixel within the binary image multiplied with the
+                                        image after milling.
+          answer (string):              The corresponding answer yes, no or maybe determined by the signal.
     """
     if np.sum(binary_end_result) == 0:
-        p_s = '%.3g' % 0
-        logging.info(f"the amount of signal per square meter: {p_s}")
-        logging.info("There is still signal in the milling site?\nNo")
+        logging.info(f"the amount of signal per square meter: 0")
+        logging.info("Is there still signal in the milling site? -> No")
         return 0, 'No'
-    if pixel_size > 1e-3:
-        pixel_size *= 10**(-6)
 
-    signal = np.sum(binary_end_result*masked_img) * (pixel_size**2 / 1e-20) / np.sum(binary_end_result*pixel_size**2)
+    signal = np.sum(binary_end_result*masked_img) / np.sum(binary_end_result)
     p_s = '%.3g' % signal
     logging.info(f"the amount of signal per square meter: {p_s}")
     if signal > upper_lim:
@@ -1989,8 +1957,7 @@ def show_line_detection_steps(img_after_blurred, edges, lines, lines2, after_gro
         image = cv2.bitwise_not(image)
         image = image * 0.8
         image1 = deepcopy(image)
-        # image2 = deepcopy(image)
-        image3 = deepcopy(image)
+        image2 = deepcopy(image)
 
         if len(after_grouping) > 0:
             logging.info("{} lines after grouping".format(len(after_grouping)))
@@ -2000,7 +1967,7 @@ def show_line_detection_steps(img_after_blurred, edges, lines, lines2, after_gro
                 # Extracted points nested in the list
                 x1, y1, x2, y2 = points[0]
                 # Draw the lines joining the points on the original image
-                cv2.line(image3, (x1, y1), (x2, y2), 255, 2)
+                cv2.line(image2, (x1, y1), (x2, y2), 255, 2)
         else:
             logging.info("0 lines after grouping")
 
@@ -2028,9 +1995,7 @@ def show_line_detection_steps(img_after_blurred, edges, lines, lines2, after_gro
         ax[1, 1].set_title('similar lines combined')
         ax[1, 0].imshow(image)
         ax[1, 0].set_title('all the lines')
-        # ax[2, 0].imshow(image2)
-        # ax[2, 0].set_title('after selection')
-        ax[2, 1].imshow(image3)
+        ax[2, 1].imshow(image2)
         ax[2, 1].set_title('after grouping')
         plt.show()
     else:
@@ -2066,7 +2031,6 @@ def plot_end_results(img_before, img_after, img_before_blurred, img_after_blurre
     x_max = extents[1]
     y_min = extents[3]
     y_max = extents[2]
-    # img_before_blurred = deepcopy(img_after_blurred)
     ints_before = np.max(img_before_blurred) * 1.1
     ints_after = np.max(img_after_blurred) * 1.1
     cv2.line(img_before_blurred, (x_min, y_min), (x_max, y_min), ints_before, 5)
@@ -2113,4 +2077,3 @@ def plot_end_results(img_before, img_after, img_before_blurred, img_after_blurre
 
     # plt.savefig("/home/victoria/Documents/Lars/figures/data nr{} max ip.png".format(e), dpi=300)  # , dpi=600)
     plt.show()
-    # del fig, ax

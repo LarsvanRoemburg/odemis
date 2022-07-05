@@ -1,8 +1,6 @@
-import logging
 import unittest
 import gc
 
-import cv2
 import numpy as np
 from scipy.ndimage import gaussian_filter
 import matplotlib.pyplot as plt
@@ -307,116 +305,120 @@ class TestFunctionsLars(unittest.TestCase):
 
             self.assertTrue(np.array_equal(shift, correct_shift))
 
-    def test_get_image(self):
-        """
-        Here I do still use the functions z_projection_and_outlier_cutoff() and find_focus_z_slice_and_outlier_cutoff().
-        """
-
-        for i in np.array([0, 5]):
-            img_before, img_after, meta_before, meta_after = get_image(self.path_before[i], self.path_after[i],
-                                                                       self.ch_before[i], self.ch_after[i],
-                                                                       max_slices_proj=30,
-                                                                       max_slices_focus=5, mode='projection',
-                                                                       proj_mode='max', blur=25)
-
-            data_before_milling = tiff.read_data(self.path_before[i])
-            # meta_before = data_before_milling[self.ch_before[i]].metadata
-            img_before_correct = z_projection_and_outlier_cutoff(data_before_milling, 30, self.ch_before[i],
-                                                                 mode='max')
-            del data_before_milling
-            gc.collect()
-
-            data_after_milling = tiff.read_data(self.path_after[i])
-            # meta_after = data_after_milling[self.ch_after[i]].metadata
-            img_after_correct = z_projection_and_outlier_cutoff(data_after_milling, 30, self.ch_after[i],
-                                                                mode='max')
-
-            del data_after_milling
-            gc.collect()
-
-            self.assertTrue(np.array_equal(img_before, img_before_correct))
-            self.assertTrue(np.array_equal(img_after, img_after_correct))
-
-            img_before, img_after, meta_before, meta_after = get_image(self.path_before[i], self.path_after[i],
-                                                                       self.ch_before[i], self.ch_after[i],
-                                                                       max_slices_proj=30,
-                                                                       max_slices_focus=5, mode='in_focus',
-                                                                       proj_mode='mean', blur=25)
-
-            data_before_milling = tiff.read_data(self.path_before[i])
-            # meta_before = data_before_milling[ch_before].metadata
-            data_after_milling = tiff.read_data(self.path_after[i])
-            # meta_after = data_after_milling[ch_after].metadata
-
-            # if both data sets have only one slice, just output those.
-            if data_before_milling[0].shape[0] != 1 and data_after_milling[0].shape[0] != 1:
-                img_before_correct = z_projection_and_outlier_cutoff(data_before_milling, 30, self.ch_before[i],
-                                                                     mode='mean')
-                img_after_correct = z_projection_and_outlier_cutoff(data_after_milling, 30, self.ch_after[i],
-                                                                    mode='mean')
-            else:
-                # creating projection images for finding a rough estimate for milling site position
-                img_before_correct = z_projection_and_outlier_cutoff(data_before_milling, 30, self.ch_before[i],
-                                                                     mode='mean')
-                img_after_correct = z_projection_and_outlier_cutoff(data_after_milling, 30, self.ch_after[i],
-                                                                    mode='mean')
-
-                # rescaling one image to the other if necessary
-                img_before_correct, img_after_correct, magni = rescaling(img_before_correct, img_after_correct)
-                # calculate the shift between the two images
-                img_after_correct, shift = overlay(img_before_correct, img_after_correct, max_shift=4)
-                # shift is [dy, dx]
-
-                # blurring the images
-                img_before_correct, img_before_blurred = blur_and_norm(img_before_correct, blur=25)
-                img_after_correct, img_after_blurred = blur_and_norm(img_after_correct, blur=25)
-
-                # finding the estimates for the milling site position
-                milling_x_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x')
-                milling_y_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='y')
-
-                # finding the in focus slice.
-                # because the raw data is not yet scaled properly, the position needs to be adjusted for that
-                if magni == 1:
-                    img_before_correct, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling,
-                                                                                         milling_y_pos,
-                                                                                         milling_x_pos,
-                                                                                         self.ch_before[i],
-                                                                                         num_slices=5, mode='mean')
-                    img_after_correct, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling,
-                                                                                        milling_y_pos - shift[0],
-                                                                                        milling_x_pos - shift[1],
-                                                                                        self.ch_after[i],
-                                                                                        num_slices=5, mode='mean')
-                elif magni > 1:
-                    img_before_correct, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling,
-                                                                                         milling_y_pos,
-                                                                                         milling_x_pos,
-                                                                                         self.ch_before[i],
-                                                                                         num_slices=5, mode='mean')
-                    img_after_correct, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling,
-                                                                                        (milling_y_pos - shift[
-                                                                                            0]) / magni,
-                                                                                        (milling_x_pos - shift[
-                                                                                            1]) / magni,
-                                                                                        self.ch_after[i],
-                                                                                        num_slices=5, mode='mean')
-                elif magni < 1:
-                    img_before_correct, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling,
-                                                                                         milling_y_pos * magni,
-                                                                                         milling_x_pos * magni,
-                                                                                         self.ch_before[i],
-                                                                                         num_slices=5, mode='mean')
-                    img_after_correct, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling,
-                                                                                        milling_y_pos - shift[0],
-                                                                                        milling_x_pos - shift[1],
-                                                                                        self.ch_after[i],
-                                                                                        num_slices=5, mode='mean')
-            del data_before_milling, data_after_milling
-            gc.collect()
-
-            self.assertTrue(np.array_equal(img_before, img_before_correct))
-            self.assertTrue(np.array_equal(img_after, img_after_correct))
+    # def test_get_image(self):
+    #     """
+    #     Here I do still use the functions z_projection_and_outlier_cutoff() and find_focus_z_slice_and_outlier_cutoff()
+    #     so it is not entirely independent of other functions.
+    #
+    #     #TODO: reading the data needs to be split in two, otherwise too much memory is used and the process is killed.
+    #     It is already done in the functions itself so you can just compare and copy parts.
+    #     """
+    #
+    #     for i in np.array([0, 5]):
+    #         img_before, img_after, meta_before, meta_after = get_image(self.path_before[i], self.path_after[i],
+    #                                                                    self.ch_before[i], self.ch_after[i],
+    #                                                                    max_slices_proj=30,
+    #                                                                    max_slices_focus=5, mode='projection',
+    #                                                                    proj_mode='max', blur=25)
+    #
+    #         data_before_milling = tiff.read_data(self.path_before[i])
+    #         # meta_before = data_before_milling[self.ch_before[i]].metadata
+    #         img_before_correct = z_projection_and_outlier_cutoff(data_before_milling, 30, self.ch_before[i],
+    #                                                              mode='max')
+    #         del data_before_milling
+    #         gc.collect()
+    #
+    #         data_after_milling = tiff.read_data(self.path_after[i])
+    #         # meta_after = data_after_milling[self.ch_after[i]].metadata
+    #         img_after_correct = z_projection_and_outlier_cutoff(data_after_milling, 30, self.ch_after[i],
+    #                                                             mode='max')
+    #
+    #         del data_after_milling
+    #         gc.collect()
+    #
+    #         self.assertTrue(np.array_equal(img_before, img_before_correct))
+    #         self.assertTrue(np.array_equal(img_after, img_after_correct))
+    #
+    #         img_before, img_after, meta_before, meta_after = get_image(self.path_before[i], self.path_after[i],
+    #                                                                    self.ch_before[i], self.ch_after[i],
+    #                                                                    max_slices_proj=30,
+    #                                                                    max_slices_focus=5, mode='in_focus',
+    #                                                                    proj_mode='mean', blur=25)
+    #
+    #         data_before_milling = tiff.read_data(self.path_before[i])
+    #         # meta_before = data_before_milling[ch_before].metadata
+    #         data_after_milling = tiff.read_data(self.path_after[i])
+    #         # meta_after = data_after_milling[ch_after].metadata
+    #
+    #         # if both data sets have only one slice, just output those.
+    #         if data_before_milling[0].shape[0] != 1 and data_after_milling[0].shape[0] != 1:
+    #             img_before_correct = z_projection_and_outlier_cutoff(data_before_milling, 30, self.ch_before[i],
+    #                                                                  mode='mean')
+    #             img_after_correct = z_projection_and_outlier_cutoff(data_after_milling, 30, self.ch_after[i],
+    #                                                                 mode='mean')
+    #         else:
+    #             # creating projection images for finding a rough estimate for milling site position
+    #             img_before_correct = z_projection_and_outlier_cutoff(data_before_milling, 30, self.ch_before[i],
+    #                                                                  mode='mean')
+    #             img_after_correct = z_projection_and_outlier_cutoff(data_after_milling, 30, self.ch_after[i],
+    #                                                                 mode='mean')
+    #
+    #             # rescaling one image to the other if necessary
+    #             img_before_correct, img_after_correct, magni = rescaling(img_before_correct, img_after_correct)
+    #             # calculate the shift between the two images
+    #             img_after_correct, shift = overlay(img_before_correct, img_after_correct, max_shift=4)
+    #             # shift is [dy, dx]
+    #
+    #             # blurring the images
+    #             img_before_correct, img_before_blurred = blur_and_norm(img_before_correct, blur=25)
+    #             img_after_correct, img_after_blurred = blur_and_norm(img_after_correct, blur=25)
+    #
+    #             # finding the estimates for the milling site position
+    #             milling_x_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='x')
+    #             milling_y_pos = find_x_or_y_pos_milling_site(img_before_blurred, img_after_blurred, ax='y')
+    #
+    #             # finding the in focus slice.
+    #             # because the raw data is not yet scaled properly, the position needs to be adjusted for that
+    #             if magni == 1:
+    #                 img_before_correct, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling,
+    #                                                                                      milling_y_pos,
+    #                                                                                      milling_x_pos,
+    #                                                                                      self.ch_before[i],
+    #                                                                                      num_slices=5, mode='mean')
+    #                 img_after_correct, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling,
+    #                                                                                     milling_y_pos - shift[0],
+    #                                                                                     milling_x_pos - shift[1],
+    #                                                                                     self.ch_after[i],
+    #                                                                                     num_slices=5, mode='mean')
+    #             elif magni > 1:
+    #                 img_before_correct, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling,
+    #                                                                                      milling_y_pos,
+    #                                                                                      milling_x_pos,
+    #                                                                                      self.ch_before[i],
+    #                                                                                      num_slices=5, mode='mean')
+    #                 img_after_correct, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling,
+    #                                                                                     (milling_y_pos - shift[
+    #                                                                                         0]) / magni,
+    #                                                                                     (milling_x_pos - shift[
+    #                                                                                         1]) / magni,
+    #                                                                                     self.ch_after[i],
+    #                                                                                     num_slices=5, mode='mean')
+    #             elif magni < 1:
+    #                 img_before_correct, in_focus = find_focus_z_slice_and_outlier_cutoff(data_before_milling,
+    #                                                                                      milling_y_pos * magni,
+    #                                                                                      milling_x_pos * magni,
+    #                                                                                      self.ch_before[i],
+    #                                                                                      num_slices=5, mode='mean')
+    #                 img_after_correct, in_focus = find_focus_z_slice_and_outlier_cutoff(data_after_milling,
+    #                                                                                     milling_y_pos - shift[0],
+    #                                                                                     milling_x_pos - shift[1],
+    #                                                                                     self.ch_after[i],
+    #                                                                                     num_slices=5, mode='mean')
+    #         del data_before_milling, data_after_milling
+    #         gc.collect()
+    #
+    #         self.assertTrue(np.array_equal(img_before, img_before_correct))
+    #         self.assertTrue(np.array_equal(img_after, img_after_correct))
 
     def test_blur_and_norm(self):
         img = np.zeros((100, 100))
@@ -901,14 +903,14 @@ class TestFunctionsLars(unittest.TestCase):
         biggest = np.where(size_groups_combined == np.max(size_groups_combined))
 
         merge_big_groups = combine_biggest_groups(biggest, groups, x_lines2, y_lines2, angle_lines2, max_dist=5,
-                                                  max_angle_diff=np.pi/8)
+                                                  max_angle_diff=np.pi / 8)
 
         merge_big_groups_correct = np.zeros((2, 2))
 
         self.assertTrue(np.array_equal(merge_big_groups, merge_big_groups_correct))
 
         merge_big_groups = combine_biggest_groups(biggest, groups, x_lines2, y_lines2, angle_lines2, max_dist=10,
-                                                  max_angle_diff=np.pi/8)
+                                                  max_angle_diff=np.pi / 8)
 
         merge_big_groups_correct = np.zeros((2, 2))
         merge_big_groups_correct[0, 1] = 12
@@ -936,7 +938,7 @@ class TestFunctionsLars(unittest.TestCase):
         biggest = np.where(size_groups_combined == np.max(size_groups_combined))
 
         merge_big_groups = combine_biggest_groups(biggest, groups, x_lines2, y_lines2, angle_lines2, max_dist=25,
-                                                  max_angle_diff=np.pi/8)
+                                                  max_angle_diff=np.pi / 8)
 
         merge_big_groups_correct = np.zeros((2, 2))
         merge_big_groups_correct[0, 1] = 12
@@ -998,7 +1000,7 @@ class TestFunctionsLars(unittest.TestCase):
         after_grouping = last_group_selection(groups, biggest, merge_big_groups, x_lines2, x_pos_mil=70,
                                               angle_lines=angle_lines2)
 
-        after_grouping_correct = np.arange(6)+3
+        after_grouping_correct = np.arange(6) + 3
 
         self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
 
@@ -1039,7 +1041,7 @@ class TestFunctionsLars(unittest.TestCase):
         after_grouping = last_group_selection(groups, biggest, merge_big_groups, x_lines2, x_pos_mil=70,
                                               angle_lines=angle_lines2)
 
-        after_grouping_correct = np.arange(9)+6
+        after_grouping_correct = np.arange(9) + 6
         after_grouping_correct[-3:] += 3
 
         self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
@@ -1051,8 +1053,6 @@ class TestFunctionsLars(unittest.TestCase):
         after_grouping_correct[-3:] += 6
 
         self.assertTrue(np.array_equal(after_grouping, after_grouping_correct))
-
-
 
     def test_couple_groups_of_lines(self):
         x_lines2 = np.array([15, 35, 55, 25, 45, 65])

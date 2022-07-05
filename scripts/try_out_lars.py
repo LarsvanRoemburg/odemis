@@ -160,13 +160,15 @@ test_data_intra_after = [
     "/home/victoria/Documents/Lars/data/test data/ForDelmic/Cells/grid3/lam10_post-mill_intracell.tiff"
 ]
 
-test_data_GFP_before = ["/home/victoria/Documents/Lars/data/test data/NEW_202205/Yeast_eGFP_Atg8/FOV1_new_checkpoint_00.tiff",
-                        "/home/victoria/Documents/Lars/data/test data/NEW_202205/Yeast_eGFP_Atg8/FOV3_new_checkpoint_00.tiff",
-                        "/home/victoria/Documents/Lars/data/test data/NEW_202205/Yeast_eGFP_Ede1/EA010_8_FOV3_checkpoint_00_1.tiff"]
+test_data_GFP_before = [
+    "/home/victoria/Documents/Lars/data/test data/NEW_202205/Yeast_eGFP_Atg8/FOV1_new_checkpoint_00.tiff",
+    "/home/victoria/Documents/Lars/data/test data/NEW_202205/Yeast_eGFP_Atg8/FOV3_new_checkpoint_00.tiff",
+    "/home/victoria/Documents/Lars/data/test data/NEW_202205/Yeast_eGFP_Ede1/EA010_8_FOV3_checkpoint_00_1.tiff"]
 
-test_data_GFP_after = ["/home/victoria/Documents/Lars/data/test data/NEW_202205/Yeast_eGFP_Atg8/FOV1_new_final_lamella.tiff",
-                       "/home/victoria/Documents/Lars/data/test data/NEW_202205/Yeast_eGFP_Atg8/FOV3_new_final_lamella.tiff",
-                       "/home/victoria/Documents/Lars/data/test data/NEW_202205/Yeast_eGFP_Ede1/EA010_8_FOV3_final.tiff"]
+test_data_GFP_after = [
+    "/home/victoria/Documents/Lars/data/test data/NEW_202205/Yeast_eGFP_Atg8/FOV1_new_final_lamella.tiff",
+    "/home/victoria/Documents/Lars/data/test data/NEW_202205/Yeast_eGFP_Atg8/FOV3_new_final_lamella.tiff",
+    "/home/victoria/Documents/Lars/data/test data/NEW_202205/Yeast_eGFP_Ede1/EA010_8_FOV3_final.tiff"]
 
 yeast_not_mammalian = np.ones(18, dtype=bool)
 yeast_not_mammalian[8:12] = False
@@ -194,16 +196,18 @@ if __name__ == '__main__':
     signal_in_maybe2 = []
     answers2 = []
 
-    for nnn in np.arange(0, len(test_data_GFP_before), 1, dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
+    for nnn in np.arange(0, len(data_paths_after), 1,
+                         dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
         print("dataset nr. {}".format(nnn + 1))
-        print(test_data_GFP_before[nnn])
-        print(test_data_GFP_after[nnn])
+        print(data_paths_before[nnn])
+        print(data_paths_after[nnn])
         # print(data_paths_before[nnn])
         # print(data_paths_after[nnn])
         logging.info('starting ROI detection workflow')
         # convert the image to a numpy array and set a threshold for outliers in the image / z-stack
         # for data before milling
-        img_before, img_after, meta_before, meta_after = get_image(test_data_GFP_before[nnn], test_data_GFP_after[nnn],
+        img_before, img_after, meta_before, meta_after = get_image(data_paths_before[nnn],
+                                                                   data_paths_after[nnn],
                                                                    channel_before[nnn], channel_after[nnn],
                                                                    mode='in_focus', proj_mode='max')
 
@@ -216,45 +220,41 @@ if __name__ == '__main__':
         # template_mask = get_template_mask(img_after, best_template, best_angle, best_y, best_x)
         logging.info("template matching done")
 
-        mask_diff, mask_combined, combined = get_mask(img_before_blurred, img_after_blurred, plotting_lines=True)
+        mask_diff, mask_combined, combined = get_mask(img_before_blurred, img_after_blurred, plotting_lines=False)
         logging.info("get_mask() done")
 
         masked_img, extents, binary_end, binary_end_without, key_points, yxr, try_again = analyze_data(img_after,
                                                                                                        mask_combined,
-                                                                                                       plotting=True)
+                                                                                                       plotting=False)
         masked_img2, extents2, binary_end2, binary_end_without2, key_points2, yxr2, try_again2 = analyze_data(img_after,
                                                                                                               mask_diff)
         logging.info("analyzing the data done")
 
         binary_img, b_img_without = from_blobs_to_binary(yxr, masked_img.shape, mask_combined)
-        # fig, ax = plt.subplots(ncols=2, sharex=True, sharey=True)
-        # ax[0].imshow(masked_img)
-        # ax[1].imshow(b_img_without)
-        # plt.show()
-        # if yeast_not_mammalian[nnn]:
-        signal, answer = from_binary_to_answer(binary_end_without, masked_img, meta_after['Pixel size'][0], try_again)
-        # else:
-        signal2, answer2 = from_binary_to_answer(b_img_without, masked_img, meta_after['Pixel size'][0], try_again)
+
+        signal, answer = from_binary_to_answer(binary_end_without, masked_img, try_again)
+
+        signal2, answer2 = from_binary_to_answer(b_img_without, masked_img, try_again)
         # 2 works better!
         logging.info('final answer done')
-        # if 'Yes' in signal_in_data[nnn]:
-        #     signal_in_yes.append(signal)
-        #     signal_in_yes2.append(signal2)
-        # elif 'No' in signal_in_data[nnn]:
-        #     signal_in_no.append(signal)
-        #     signal_in_no2.append(signal2)
-        # elif 'Maybe' in signal_in_data[nnn]:
-        #     signal_in_maybe.append(signal)
-        #     signal_in_maybe2.append(signal2)
-        # answers.append(answer)
-        # answers2.append(answer2)
+        if 'Yes' in signal_in_data[nnn]:
+            signal_in_yes.append(signal)
+            signal_in_yes2.append(signal2)
+        elif 'No' in signal_in_data[nnn]:
+            signal_in_no.append(signal)
+            signal_in_no2.append(signal2)
+        elif 'Maybe' in signal_in_data[nnn]:
+            signal_in_maybe.append(signal)
+            signal_in_maybe2.append(signal2)
+        answers.append(answer)
+        answers2.append(answer2)
 
         print(f"the signal intensity/m2 is: {'%.3g' % signal2}")
         print(f"the predicted answer is: {answer2}")
         # print(f"the correct answer is: {signal_in_data[nnn]}")
 
-        plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask_diff, masked_img,
-                         masked_img2, binary_end_without, binary_end_without2, cropping, extents, extents2)
+        # plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask_diff, masked_img,
+        #                  masked_img2, binary_end_without, binary_end_without2, cropping, extents, extents2)
         logging.info('plotting results done')
         del img_before, img_after, img_before_blurred, img_after_blurred, \
             mask_combined, mask_diff, masked_img, masked_img2, binary_end, \
@@ -264,11 +264,11 @@ if __name__ == '__main__':
         logging.info("ROI detection workflow was successful!\n")
 
     # plt.show()
-    # res = 0
-    # res2 = 0
-    # for i in range(len(answers)):
-    #     res += 1 * (answers[i] == signal_in_data[i])
-    #     res2 += 1 * (answers2[i] == signal_in_data[i])
-    # print(f"{res} out of {len(answers)} are correctly predicted with binary thresholding")
-    # print(f"{res2} out of {len(answers)} are correctly predicted with blob detection")
-    # print("Ending data set")
+    res = 0
+    res2 = 0
+    for i in range(len(answers)):
+        res += 1 * (answers[i] == signal_in_data[i])
+        res2 += 1 * (answers2[i] == signal_in_data[i])
+    print(f"{res} out of {len(answers)} are correctly predicted with binary thresholding")
+    print(f"{res2} out of {len(answers)} are correctly predicted with blob detection")
+    print("Ending data set")
