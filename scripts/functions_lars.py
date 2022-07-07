@@ -285,10 +285,7 @@ def match_template_to_image(img_before, img_after, factor=4, num_templates=10, n
     # ax[1, 2].set_title("thres at 1%")
     # plt.show()
 
-    img_after[img_after > thres] = thres
-    #
-    # # x1, y1, x2, y2 = bounding_box(draw_section_contour(img_after), offset=10)
-    # # template = crop_to_border(img_after, [x1, y1, x2, y2])
+    # img_after[img_after > thres] = thres
     template_size = int(img_after.shape[0] / 2)
     num_width = num_templates
     templates = np.zeros((num_width, int(template_size), template_size))
@@ -371,18 +368,19 @@ def match_template_to_image(img_before, img_after, factor=4, num_templates=10, n
     # plt.show()
 
     show_img2 = np.array(img_after)
-    show_img2[best_y:best_y + templates[0].shape[0], best_x:best_x + templates[0].shape[1]] += 0.5 * rotate(
+    show_img2[best_y:best_y + templates[0].shape[0], best_x:best_x + templates[0].shape[1]] += 2 * rotate(
         best_template,
         best_angle,
         mode='constant',
         cval=0)
 
     fig, ax = plt.subplots(ncols=3)
-    ax[0].imshow(img_after)
-    ax[1].imshow(show_img)
-    ax[1].set_title("n , m")
+    ax[0].imshow(best_template)
+    ax[0].set_title("The template")
+    ax[1].imshow(img_after)
+    ax[1].set_title("The image")
     ax[2].imshow(show_img2)
-    ax[2].set_title("n x m")
+    ax[2].set_title("The template matching")
     plt.show()
 
     return best_template, best_angle, best_y, best_x

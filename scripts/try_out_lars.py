@@ -196,13 +196,12 @@ if __name__ == '__main__':
     signal_in_maybe2 = []
     answers2 = []
 
-    for nnn in np.arange(0, len(data_paths_after), 1,
+    for nnn in np.arange(17, len(data_paths_before), 1,
                          dtype=int):  # range(len(data_paths_after)) OR np.arange(4, 9, 1, dtype=int)
         print("dataset nr. {}".format(nnn + 1))
         print(data_paths_before[nnn])
         print(data_paths_after[nnn])
-        # print(data_paths_before[nnn])
-        # print(data_paths_after[nnn])
+
         logging.info('starting ROI detection workflow')
         # convert the image to a numpy array and set a threshold for outliers in the image / z-stack
         # for data before milling
@@ -211,6 +210,7 @@ if __name__ == '__main__':
                                                                    channel_before[nnn], channel_after[nnn],
                                                                    mode='in_focus', proj_mode='max')
 
+
         logging.info("get_image() done")
         img_before, img_after, img_before_blurred, img_after_blurred = pre_processing_data(img_before, img_after)
 
@@ -218,7 +218,7 @@ if __name__ == '__main__':
 
         # best_template, best_angle, best_y, best_x = match_template_to_image(img_before, img_after)
         # template_mask = get_template_mask(img_after, best_template, best_angle, best_y, best_x)
-        logging.info("template matching done")
+        # logging.info("template matching done")
 
         mask_diff, mask_combined, combined = get_mask(img_before_blurred, img_after_blurred, plotting_lines=False)
         logging.info("get_mask() done")
@@ -253,8 +253,8 @@ if __name__ == '__main__':
         print(f"the predicted answer is: {answer2}")
         # print(f"the correct answer is: {signal_in_data[nnn]}")
 
-        # plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask_diff, masked_img,
-        #                  masked_img2, binary_end_without, binary_end_without2, cropping, extents, extents2)
+        plot_end_results(img_before, img_after, img_before_blurred, img_after_blurred, mask_diff, masked_img,
+                         masked_img2, binary_end_without, binary_end_without2, cropping, extents, extents2)
         logging.info('plotting results done')
         del img_before, img_after, img_before_blurred, img_after_blurred, \
             mask_combined, mask_diff, masked_img, masked_img2, binary_end, \

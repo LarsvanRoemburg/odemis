@@ -167,3 +167,5 @@ def analyze_data(img_after, mask_combined, cropping=True, threshold_end=0.25, op
         logging.info("No blobs were found with the standard threshold, a lower threshold is set.")
 
     return masked_img, extents, binary_end, binary_end_without, key_points, yxr, try_again
+
+# TODO: in all binary operations it needs to become pixel resolution independent
