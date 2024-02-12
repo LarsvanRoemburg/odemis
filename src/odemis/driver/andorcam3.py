@@ -200,17 +200,22 @@ class AndorCam3(model.DigitalCamera):
     """
 
     def __init__(self, name, role, device=None, bitflow_install_dirs=None,
-                 max_bin=None, **kwargs):
+                 max_res=None, max_bin=None, **kwargs):
         """
         Initialises the device
         device (None or int): number of the device to open, as defined by Andor, cd scan()
           if None, uses the system handle, which allows very limited access to some information
         bitflow_install_dirs (None or str): path of bitflow install directory,
           used to set BITFLOW_INSTALL_DIRS
+        max_res (1 <= int, 1 <= int): maximum resolution possible. It has to be
+          <= the max res supported by the camera. If None, it'll
+          use the maximum supported by the camera reported. In such case, the
+          translation is not clipped, so it can be used to move the area anywhere in
+          full camera sensor. That is after applying the transpose.
         max_bin (1 <= int, 1 <= int): maximum binning accepted. If None, it'll
           use the one officially reported. Can be used to workaround issues on
           some cameras where full vertical binning tends to cause too much data
-          clipping.
+          clipping. That is after applying the transpose.
         Raises:
           ATError if the device cannot be opened.
         """
@@ -260,12 +265,21 @@ class AndorCam3(model.DigitalCamera):
         self._metadata[model.MD_HW_VERSION] = self._hwVersion
         self._metadata[model.MD_DET_TYPE] = model.MD_DT_INTEGRATING
 
-        resolution = self.getSensorResolution()
-        self._metadata[model.MD_SENSOR_SIZE] = self._transposeSizeToUser(resolution)
+        self._sensor_res = self.getSensorResolution()
+        sensor_res_user = self._transposeSizeToUser(self._sensor_res)
+        if max_res is None:
+            max_res = sensor_res_user
+        else:
+            max_res = tuple(max_res)
+        if not all(1 <= mr <= r for mr, r in zip(max_res, sensor_res_user)):
+            raise ValueError("max_res has to be between 1, 1 and %s, but got %s", sensor_res_user, max_res)
+        max_res_hw = self._transposeSizeFromUser(max_res)
+
+        self._metadata[model.MD_SENSOR_SIZE] = sensor_res_user
 
         # 16-bit is the best the camera hardware can generate. In some large
         # binnings, we might receive 32 bits, but that's just due to the sum.
-        self._shape = resolution + (2 ** 16,)
+        self._shape = max_res_hw + (2 ** 16,)
 
         # TODO: set different methods implementations based on the binning support
         # Find out which type of binning control to use
@@ -280,7 +294,7 @@ class AndorCam3(model.DigitalCamera):
             self._binmtd = NO_BINNING
 
         # cache some info
-        self._bin_to_resrng = self._getResolutionRangesPerBinning()
+        self._bin_to_resrng = self._getResolutionRangesPerBinning(max_res_hw)
         self._gain_to_idx = {} # cached for _applyGain() float -> int
 
         # put the detector pixelSize
@@ -316,15 +330,15 @@ class AndorCam3(model.DigitalCamera):
         self._prev_settings = [None, None, None, None, None, None, None]
         self._translation = (0, 0)
         self._binning = (1, 1) # used by resolutionFitter()
-        self._resolution = resolution
+        self._resolution = max_res_hw
         if self.isImplemented(u"AOIWidth") and self.isWritable(u"AOIWidth"):
             min_res = (1, 1)
         else:
-            min_res = resolution
+            if max_res != sensor_res_user:
+                raise ValueError("Resolution is fixed, cannot clip it with max_res")
+            min_res = max_res
         # need to be before binning, as it is modified when changing binning
-        self.resolution = model.ResolutionVA(self._transposeSizeToUser(resolution),
-                              (self._transposeSizeToUser(min_res),
-                               self._transposeSizeToUser(resolution)),
+        self.resolution = model.ResolutionVA(max_res, (min_res, max_res),
                                              setter=self._setResolution)
 
         mxb = self._transposeSizeToUser(self._getMaxBinnings())
@@ -337,7 +351,7 @@ class AndorCam3(model.DigitalCamera):
         # translation is automatically adjusted to fit whenever res/bin change
         if self.isImplemented(u"FullAOIControl") and self.GetBool(u"FullAOIControl"):
             # Support ROI anywhere => provide translation
-            hlf_shape = (self._shape[0] // 2 - 1, self._shape[1] // 2 - 1)
+            hlf_shape = (self._sensor_res[0] // 2 - 1, self._sensor_res[1] // 2 - 1)
             uh_shape = self._transposeSizeToUser(hlf_shape)
             tran_rng = ((-uh_shape[0], -uh_shape[1]),
                         (uh_shape[0], uh_shape[1]))
@@ -1058,8 +1072,10 @@ class AndorCam3(model.DigitalCamera):
         self.resolution.value = self.resolution.clip(ures)
         return self._transposeSizeToUser(self._binning)
 
-    def _getResolutionRangesPerBinning(self):
+    def _getResolutionRangesPerBinning(self, max_res):
         """
+        max_res (int, int): maximum resolution allowed at binning 1. The resolutions
+          at larger binning will be rounded down (eg, a max_res = 5 @ binning 1 -> max_res = 2 @ binning 2)
         return rrng_width, rrng_height:
           (dict int -> tuple of 2 int): binning to min/max W resolution (in super pixels)
           (dict int -> tuple of 2 int): binning to min/max H resolution (in super pixels)
@@ -1107,13 +1123,22 @@ class AndorCam3(model.DigitalCamera):
             rrng_width[1] = self.GetIntRanges(u"AOIWidth")
             rrng_height[1] = self.GetIntRanges(u"AOIHeight")
 
+        # Clip based on max_res
+        for b, (mn, mx) in rrng_width.items():
+            mx = max(mn, min(mx, max_res[0] // b))
+            rrng_width[b] = (mn, mx)
+
+        for b, (mn, mx) in rrng_height.items():
+            mx = max(mn, min(mx, max_res[1] // b))
+            rrng_height[b] = (mn, mx)
+
         return rrng_width, rrng_height
 
     def resolutionFitter(self, size_req):
         """
         Finds a resolution allowed by the camera which fits best the requested
           resolution.
-        size_req (2-tuple of int): resolution requested
+        size_req (2-tuple of int): resolution requested (in HW view)
         returns (2-tuple of int): resolution which fits the camera. It is equal
          or bigger than the requested resolution
         """
@@ -1154,8 +1179,8 @@ class AndorCam3(model.DigitalCamera):
         value = self._transposeTransFromUser(value)
         # compute the min/max of the shift. It's the same as the margin between
         # the centered ROI and the border, taking into account the binning.
-        max_tran = ((self._shape[0] - self._resolution[0] * self._binning[0]) // 2,
-                    (self._shape[1] - self._resolution[1] * self._binning[1]) // 2)
+        max_tran = ((self._sensor_res[0] - self._resolution[0] * self._binning[0]) // 2,
+                    (self._sensor_res[1] - self._resolution[1] * self._binning[1]) // 2)
 
         # between -margin and +margin
         trans = (max(-max_tran[0], min(value[0], max_tran[0])),
@@ -1221,15 +1246,15 @@ class AndorCam3(model.DigitalCamera):
          twice smaller if the binning is 2 instead of 1. It must be a allowed
          resolution.
         """
-        resolution = self._shape[0:2]
-        assert (1 <= size[0] <= resolution[0] and 1 <= size[1] <= resolution[1])
+        sensor_res = self._sensor_res[0:2]
+        assert (1 <= size[0] <= sensor_res[0] and 1 <= size[1] <= sensor_res[1])
 
         # If the camera doesn't support Area of Interest, then it has to be the
         # size of the sensor
         if (not self.isImplemented(u"AOIWidth") or
             not self.isWritable(u"AOIWidth")):
-            max_size = (int(resolution[0] // self._binning[0]),
-                        int(resolution[1] // self._binning[1]))
+            max_size = (int(sensor_res[0] // self._binning[0]),
+                        int(sensor_res[1] // self._binning[1]))
             if size != max_size:
                 logging.warning("requested size %s different from the only"
                                 " size available %s.", size, max_size)
@@ -1245,8 +1270,8 @@ class AndorCam3(model.DigitalCamera):
         trans = self._translation
 
         # center the AOI (in original/sensor pixels)
-        lt = ((resolution[0] - size[0] * self._binning[0]) // 2 + 1 + trans[0],
-              (resolution[1] - size[1] * self._binning[1]) // 2 + 1 + trans[1])
+        lt = ((sensor_res[0] - size[0] * self._binning[0]) // 2 + 1 + trans[0],
+              (sensor_res[1] - size[1] * self._binning[1]) // 2 + 1 + trans[1])
 
         # order matters
         self.SetInt(u"AOIWidth", size[0])

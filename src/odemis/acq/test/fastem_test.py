@@ -4,7 +4,7 @@ Created on 15th July 2021
 
 @author: Sabrina Rossberger, Thera Pals, Éric Piel
 
-Copyright © 2021 Sabrina Rossberger, Delmic
+Copyright © 2021-2022 Sabrina Rossberger, Delmic
 
 This file is part of Odemis.
 
@@ -39,33 +39,26 @@ from odemis import model
 from odemis.acq import fastem, stream
 from odemis.util import test, img
 
-# * TEST_NOHW = 1: not connected to anything => skip most of the tests
-# * TEST_NOHW = 0: connected to the real hardware or simulator
-# technolution_asm_simulator/simulator2/run_the_simulator.py
-TEST_NOHW = (os.environ.get("TEST_NOHW", "0") != "0")  # Default is HW/simulator testing
+# * TEST_NOHW = 1: connected to the simulator or not connected to anything
+# * TEST_NOHW = 0: connected to the real hardware, the backend should be running
+# technolution_asm_simulator/simulator2/run_the_simulator.sh
+TEST_NOHW = (os.environ.get("TEST_NOHW", "0") != "0")  # Default is hardware testing
 
 logging.getLogger().setLevel(logging.DEBUG)
 logging.basicConfig(format="%(asctime)s  %(levelname)-7s %(module)s:%(lineno)d %(message)s")
 
 CONFIG_PATH = os.path.dirname(odemis.__file__) + "/../../install/linux/usr/share/odemis/"
 FASTEM_CONFIG = CONFIG_PATH + "sim/fastem-sim.odm.yaml"
+FASTEM_CONFIG_ASM = CONFIG_PATH + "sim/fastem-sim-asm.odm.yaml"
 
 
 class TestFASTEMOverviewAcquisition(unittest.TestCase):
-    backend_was_running = False
+    """Test FASTEM overview image acquisition."""
 
     @classmethod
     def setUpClass(cls):
-
-        try:
+        if TEST_NOHW:
             test.start_backend(FASTEM_CONFIG)
-        except LookupError:
-            logging.info("A running backend is already found, skipping tests")
-            cls.backend_was_running = True
-            return
-        except IOError as exp:
-            logging.error(str(exp))
-            raise
 
         cls.ebeam = model.getComponent(role="e-beam")
         cls.efocuser = model.getComponent(role="ebeam-focus")
@@ -73,38 +66,31 @@ class TestFASTEMOverviewAcquisition(unittest.TestCase):
         cls.stage = model.getComponent(role="stage")
         cls.stage.reference({"x", "y"}).result()
 
-    @classmethod
-    def tearDownClass(cls):
-        if cls.backend_was_running:
-            return
-        test.stop_backend()
-
     def setUp(self):
-        if self.backend_was_running:
-            self.skipTest("Running backend found")
+        self.stream = stream.SEMStream("Single beam", self.sed, self.sed.data, self.ebeam,
+                                       focuser=self.efocuser,  # Not used during acquisition, but done by the GUI
+                                       hwemtvas={"scale", "dwellTime", "horizontalFoV"})
 
     def test_overview_acquisition(self):
-        s = stream.SEMStream("Single beam", self.sed, self.sed.data, self.ebeam,
-                             focuser=self.efocuser,  # Not used during acquisition, but done by the GUI
-                             hwemtvas={"scale", "dwellTime", "horizontalFoV"})
+        """Test the full overview image acquisition."""
         # This should be used by the acquisition
-        s.dwellTime.value = 1e-6  # s
+        self.stream.dwellTime.value = 1e-6  # s
 
         # Use random settings and check they are overridden by the overview acquisition
-        s.scale.value = (2, 2)
-        s.horizontalFoV.value = 20e-6  # m
+        self.stream.scale.value = (2, 2)
+        self.stream.horizontalFoV.value = 20e-6  # m
 
-        # Known position of the center scintillator
+        # Known position of the center scintillator in the sample carrier coordinate system
         scintillator5_area = (-0.007, -0.007, 0.007, 0.007)  # l, b, r, t
         # Small area for DEBUG (3x3)
         # scintillator5_area = (-0.002, -0.002, 0.002, 0.002)  # l, b, r, t
 
-        est_time = fastem.estimateTiledAcquisitionTime(s, self.stage, scintillator5_area)
+        est_time = fastem.estimateTiledAcquisitionTime(self.stream, self.stage, scintillator5_area)
         # don't use for DEBUG example
         self.assertGreater(est_time, 10)  # It should take more than 10s! (expect ~5 min)
 
         before_start_t = time.time()
-        f = fastem.acquireTiledArea(s, self.stage, scintillator5_area)
+        f = fastem.acquireTiledArea(self.stream, self.stage, scintillator5_area)
         time.sleep(1)
         start_t, end_t = f.get_progress()
         self.assertGreater(start_t, before_start_t)
@@ -124,17 +110,32 @@ class TestFASTEMOverviewAcquisition(unittest.TestCase):
         self.assertGreaterEqual(bbox[2], scintillator5_area[2])  # Right
         self.assertGreaterEqual(bbox[3], scintillator5_area[3])  # Top
 
+    def test_estimateTiledAcquisitionTime(self):
+        """Test estimated acquisition time for overview imaging."""
+
+        # small area on center scintillator (~3x4 tiles)
+        scintillator5_area = (-0.002, -0.002, 0.002, 0.002)  # l, b, r, t
+
+        self.stream.emitter.dwellTime.value = 1e-6  # s
+        est_time_1 = fastem.estimateTiledAcquisitionTime(self.stream, self.stage, scintillator5_area)
+
+        # increase dwell time
+        self.stream.emitter.dwellTime.value = 2e-6  # s
+        est_time_2 = fastem.estimateTiledAcquisitionTime(self.stream, self.stage, scintillator5_area)
+
+        # check that estimated time increases with dwell time
+        self.assertGreater(est_time_2, est_time_1)
+
 
 class TestFastEMROA(unittest.TestCase):
     """Test region of acquisition (ROA) class methods."""
 
     @classmethod
     def setUpClass(cls):
-        if TEST_NOHW is True:
-            raise unittest.SkipTest("No simulator running or HW present. Skip fastem ROA tests.")
+        if TEST_NOHW:
+            test.start_backend(FASTEM_CONFIG_ASM)
 
         # get the hardware components
-        cls.microscope = model.getMicroscope()
         cls.asm = model.getComponent(role="asm")
         cls.mppc = model.getComponent(role="mppc")
         cls.multibeam = model.getComponent(role="multibeam")
@@ -143,42 +144,52 @@ class TestFastEMROA(unittest.TestCase):
             role="stage")  # TODO replace with stage-scan when ROA conversion method available
         cls.stage.reference({"x", "y"}).result()
 
-    @classmethod
-    def tearDownClass(cls):
-        pass
-
     def test_estimate_acquisition_time(self):
         """Check that the estimated time for one ROA (megafield) is calculated correctly."""
         # Use float for number of fields, in order to not end up with additional fields scanned and thus an
         # incorrectly estimated roa acquisition time.
         x_fields = 2.9
         y_fields = 3.2
+        n_fields = math.ceil(x_fields) * math.ceil(y_fields)
         res_x, res_y = self.multibeam.resolution.value  # single field size
         px_size_x, px_size_y = self.multibeam.pixelSize.value
         coordinates = (0, 0, res_x * px_size_x * x_fields, res_y * px_size_y * y_fields)  # in m
         roc = fastem.FastEMROC("roc_name", coordinates)
         roa_name = time.strftime("test_megafield_id-%Y-%m-%d-%H-%M-%S")
-        roa = fastem.FastEMROA(roa_name,
-                               coordinates,
-                               roc,
-                               self.asm,
-                               self.multibeam,
-                               self.descanner,
-                               self.mppc
-                               )
 
-        cell_res = self.mppc.cellCompleteResolution.value
-        dwell_time = self.multibeam.dwellTime.value
-        flyback = self.descanner.physicalFlybackTime.value  # extra time per line scan
+        for dwell_time in [400e-9, 1e-6, 10e-6]:
+            self.multibeam.dwellTime.value = dwell_time
+            roa = fastem.FastEMROA(roa_name,
+                                   coordinates,
+                                   roc,
+                                   self.asm,
+                                   self.multibeam,
+                                   self.descanner,
+                                   self.mppc)
 
-        # calculate expected roa (megafield) acquisition time
-        # (number of pixels per line * dwell time + flyback time) * number of lines * number of cells in x and y
-        estimated_roa_acq_time = (cell_res[0] * dwell_time + flyback) * cell_res[1] \
-                                 * math.ceil(x_fields) * math.ceil(y_fields)
-        # get roa acquisition time
-        roa_acq_time = roa.estimate_acquisition_time()
+            cell_res = self.mppc.cellCompleteResolution.value
+            flyback = self.descanner.physicalFlybackTime.value  # extra time per line scan
 
-        self.assertAlmostEqual(estimated_roa_acq_time, roa_acq_time)
+            # calculate expected roa (megafield) acquisition time
+            # (number of pixels per line * dwell time + flyback time) * number of lines * number of cells in x and y
+            estimated_line_time = cell_res[0] * dwell_time
+            # Remainder of the line scan time, part which is not a whole multiple of the descan periods.
+            remainder_scanning_time = estimated_line_time % self.descanner.clockPeriod.value
+            if remainder_scanning_time is not 0:
+                # Adjusted the flyback time if there is a remainder of scanning time by adding one setpoint to ensure
+                # the line scan time is equal to a whole multiple of the descanner clock period
+                flyback = flyback + (self.descanner.clockPeriod.value - remainder_scanning_time)
+
+            # Round to prevent floating point errors
+            estimated_line_time = numpy.round(estimated_line_time + flyback, 9)
+
+            # The estimated ROA time is the line time multiplied with the cell resolution and the number of fields.
+            estimated_roa_acq_time = estimated_line_time * cell_res[1] * n_fields
+
+            # get roa acquisition time
+            roa_acq_time = roa.estimate_acquisition_time()
+
+            self.assertAlmostEqual(estimated_roa_acq_time, roa_acq_time)
 
     def test_calculate_field_indices(self):
         """Check that the correct number and order of field indices is returned and that row and column are in the
@@ -197,8 +208,7 @@ class TestFastEMROA(unittest.TestCase):
                                self.asm,
                                self.multibeam,
                                self.descanner,
-                               self.mppc
-                               )
+                               self.mppc)
 
         expected_indices = [(0, 0), (1, 0), (2, 0), (0, 1), (1, 1), (2, 1)]  # (col, row)
 
@@ -212,8 +222,8 @@ class TestFastEMAcquisition(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        if TEST_NOHW is True:
-            raise unittest.SkipTest("No simulator running or HW present. Skip fastem acquisition tests.")
+        if TEST_NOHW:
+            test.start_backend(FASTEM_CONFIG_ASM)
 
         # get the hardware components
         cls.scanner = model.getComponent(role='e-beam')
@@ -227,13 +237,11 @@ class TestFastEMAcquisition(unittest.TestCase):
         cls.beamshift = model.getComponent(role="ebeam-shift")
         cls.lens = model.getComponent(role="lens")
 
+        # Normally the beamshift MD_CALIB is set when running the calibrations.
+        # Set it here explicitly because we do not run the calibrations in these test cases.
         cls.beamshift.updateMetadata({model.MD_CALIB: cls.scanner.beamShiftTransformationMatrix.value})
         cls.beamshift.shift.value = (0, 0)
         cls.stage.reference({"x", "y"}).result()
-
-    @classmethod
-    def tearDownClass(cls):
-        pass
 
     def test_acquire_ROA(self):
         """Acquire a small mega field image with ROA matching integer multiple of single field size."""
@@ -258,8 +266,8 @@ class TestFastEMAcquisition(unittest.TestCase):
                                self.asm,
                                self.multibeam,
                                self.descanner,
-                               self.mppc
-                               )
+                               self.mppc)
+
         path_storage = os.path.join(datetime.today().strftime('%Y-%m-%d'), "test_project_megafield")
         f = fastem.acquire(roa, path_storage, self.scanner, self.multibeam, self.descanner, self.mppc, self.stage,
                            self.ccd, self.beamshift, self.lens)
@@ -291,8 +299,7 @@ class TestFastEMAcquisition(unittest.TestCase):
                                self.asm,
                                self.multibeam,
                                self.descanner,
-                               self.mppc
-                               )
+                               self.mppc)
 
         path_storage = os.path.join(datetime.today().strftime('%Y-%m-%d'), "test_project_field_indices")
         f = fastem.acquire(roa, path_storage, self.scanner, self.multibeam, self.descanner, self.mppc, self.stage,
@@ -320,8 +327,8 @@ class TestFastEMAcquisition(unittest.TestCase):
                                self.asm,
                                self.multibeam,
                                self.descanner,
-                               self.mppc
-                               )
+                               self.mppc)
+
         path_storage = os.path.join(datetime.today().strftime('%Y-%m-%d'), "test_project_progress")
 
         self.updates = 0  # updated in callback on_progress_update
@@ -353,8 +360,8 @@ class TestFastEMAcquisition(unittest.TestCase):
                                self.asm,
                                self.multibeam,
                                self.descanner,
-                               self.mppc
-                               )
+                               self.mppc)
+
         path_storage = os.path.join(datetime.today().strftime('%Y-%m-%d'), "test_project_cancel")
 
         self.end = None  # updated in callback on_progress_update
@@ -383,17 +390,16 @@ class TestFastEMAcquisition(unittest.TestCase):
         res_x, res_y = self.multibeam.resolution.value  # single field size
         px_size_x, px_size_y = self.multibeam.pixelSize.value
 
-        # FIXME: It is not clear in which coordinate system the coordinates of the ROA are!!!
-        # Note: the coordinates are in the stage coordinate system with role='stage' and not role='stage-scan'.
-        # However, for fast em acquisitions we use stage-scan, which scans along the multiprobe axes.
         # FIXME: This test does not consider yet, that ROA coordinates need to be transformed into the
         #  correct coordinate system. Replace role='stage' with role='stage-scan' when function available.
         # Note: Do not change those values; _calculate_field_indices handles floating point errors the same way
         # as an ROA that does not match an integer number of field indices by just adding an additional row or column
         # of field images.
-        top = -0.002  # top corner coordinate of ROA in stage coordinates in meter
-        left = +0.001  # left corner coordinate of ROA in stage coordinates in meter
-        coordinates = (top, left, top + res_x * px_size_x * x_fields, left + res_y * px_size_y * y_fields)  # in m
+        xmin = -0.002  # top corner coordinate of ROA in stage coordinates in meter
+        ymin = +0.001  # left corner coordinate of ROA in stage coordinates in meter
+        xmax = xmin + res_x * px_size_x * x_fields
+        ymax = ymin + res_y * px_size_y * y_fields
+        coordinates = (xmin, ymin, xmax, ymax)  # in m
         roc = fastem.FastEMROC("roc_name", coordinates)
         roa_name = time.strftime("test_megafield_id-%Y-%m-%d-%H-%M-%S")
         roa = fastem.FastEMROA(roa_name,
@@ -402,8 +408,8 @@ class TestFastEMAcquisition(unittest.TestCase):
                                self.asm,
                                self.multibeam,
                                self.descanner,
-                               self.mppc
-                               )
+                               self.mppc)
+
         path_storage = os.path.join(datetime.today().strftime('%Y-%m-%d'), "test_project_stage_move")
 
         f = fastem.acquire(roa, path_storage, self.scanner, self.multibeam, self.descanner, self.mppc, self.stage,
@@ -417,10 +423,11 @@ class TestFastEMAcquisition(unittest.TestCase):
         exp_move_x = res_x / 2. * px_size_x + res_x * px_size_x * (x_fields - 1)
         exp_move_y = res_y / 2. * px_size_y + res_y * px_size_y * (y_fields - 1)
 
-        # TODO these comments are true, when stage is replaced with stage-scan
-        # Move in the negative x direction, because the second field should be right of the first.
-        # Move in positive y direction, because the second field should be bottom of the first.
-        exp_position = (top - exp_move_x, left + exp_move_y)
+        # FIXME Needs to be updated when role="stage" is replaced with role="stage-scan"
+        # In role="stage" coordinate system:
+        # Move in the positive x direction, because the second field should be right of the first.
+        # Move in the negative y direction, because the second field should be below the first.
+        exp_position = (xmin + exp_move_x, ymax - exp_move_y)
         # get the last stage position (it is the center of the last field)
         cur_position = (self.stage.position.value['x'], self.stage.position.value['y'])
 
@@ -437,40 +444,30 @@ class TestFastEMAcquisition(unittest.TestCase):
 
 
 class TestFastEMAcquisitionTask(unittest.TestCase):
-    """Test methods of the fastem.AcquistionTask class."""
+    """Test methods of the fastem.AcquisitionTask class."""
 
     @classmethod
     def setUpClass(cls):
         if TEST_NOHW:
-            # If we are testing without hardware we just need a few attributes to be set correctly.
-            cls.scanner = None
-            cls.asm = None
+            test.start_backend(FASTEM_CONFIG_ASM)
 
-            # Use Mocks of the classes to be able to call the fake VAs as for instance mppc.dataContent.value
-            cls.mppc = Mock()
-            cls.mppc.dataContent.value = 'empty'
+        # Get the hardware components from the simulators or hardware
+        cls.scanner = model.getComponent(role='e-beam')
+        cls.asm = model.getComponent(role="asm")
+        cls.mppc = model.getComponent(role="mppc")
+        cls.multibeam = model.getComponent(role="multibeam")
+        cls.descanner = model.getComponent(role="descanner")
+        cls.stage = model.getComponent(
+            role="stage")  # TODO replace with stage-scan when ROA conversion method available
+        cls.ccd = model.getComponent(role="diagnostic-ccd")
+        cls.beamshift = model.getComponent(role="ebeam-shift")
+        cls.lens = model.getComponent(role="lens")
 
-            cls.multibeam = Mock()
-            cls.multibeam.pixelSize.value = (4.0e-9, 4.0e-9)
-            cls.multibeam.resolution.value = (800, 800)
-
-            cls.descanner = None
-            cls.stage = None
-            cls.ccd = None
-            cls.beamshift = None
-            cls.lens = None
-        else:
-            # get the hardware components from the simulators or hardware
-            cls.scanner = model.getComponent(role='e-beam')
-            cls.asm = model.getComponent(role="asm")
-            cls.mppc = model.getComponent(role="mppc")
-            cls.multibeam = model.getComponent(role="multibeam")
-            cls.descanner = model.getComponent(role="descanner")
-            cls.stage = model.getComponent(
-                role="stage")  # TODO replace with stage-scan when ROA conversion method available
-            cls.ccd = model.getComponent(role="diagnostic-ccd")
-            cls.beamshift = model.getComponent(role="ebeam-shift")
-            cls.lens = model.getComponent(role="lens")
+        # Normally the beamshift MD_CALIB is set when running the calibrations.
+        # Set it here explicitly because we do not run the calibrations in these test cases.
+        cls.beamshift.updateMetadata({model.MD_CALIB: cls.scanner.beamShiftTransformationMatrix.value})
+        cls.beamshift.shift.value = (0, 0)
+        cls.stage.reference({"x", "y"}).result()
 
     def test_get_abs_stage_movement(self):
         """
@@ -568,9 +565,8 @@ class TestFastEMAcquisitionTask(unittest.TestCase):
         self.descanner.updateMetadata({model.MD_SCAN_GAIN: (5000, 5000)})
 
         asm_config_orig = configure_hw.get_config_asm(self.multibeam, self.descanner, self.mppc)
-        exception = task.pre_calibrate()
+        task.pre_calibrate()
         asm_config_current = configure_hw.get_config_asm(self.multibeam, self.descanner, self.mppc)
-        self.assertIsNone(exception)
 
         # Verify that all settings, except the descanner scan offset, stay the same after running the pre-calibrations.
         for component, settings in asm_config_current.items():
@@ -609,6 +605,40 @@ class TestFastEMAcquisitionTask(unittest.TestCase):
             pos_first_tile_expected = (xmin + res_x / 2 * px_size_x,
                                        ymax - res_y / 2 * px_size_y)
             self.assertEqual(pos_first_tile_actual, pos_first_tile_expected)
+
+
+class TestFastEMAcquisitionTaskMock(TestFastEMAcquisitionTask):
+    """Test the methods of fastem.AcquisitionTask without a backend and with mocked components."""
+
+    @classmethod
+    def setUpClass(cls):
+        # If we are testing without hardware we just need a few attributes to be set correctly.
+        cls.scanner = None
+        cls.asm = None
+
+        # Use Mocks of the classes to be able to call the fake VAs as for instance mppc.dataContent.value
+        cls.mppc = Mock()
+        cls.mppc.dataContent.value = 'empty'
+
+        cls.multibeam = Mock()
+        cls.multibeam.pixelSize.value = (4.0e-9, 4.0e-9)
+        cls.multibeam.resolution.value = (800, 800)
+
+        cls.descanner = None
+        cls.stage = None
+        cls.ccd = None
+        cls.beamshift = None
+        cls.lens = None
+
+    def test_get_pos_first_tile(self):
+        self.skipTest(
+            "Skipping test because get_pos_first_tile is not mocked."
+        )
+
+    def test_pre_calibrate(self):
+        self.skipTest(
+            "Skipping test because the pre-calibration method is not mocked."
+        )
 
 
 if __name__ == "__main__":

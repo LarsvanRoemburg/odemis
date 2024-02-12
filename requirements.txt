@@ -1,6 +1,6 @@
 Cython>=0.23.5
 decorator>=4.0.9
-future>=0.16.0
+future~=0.15.2
 h5py>=2.5.0
 pylibtiff>=0.4.2
 matplotlib>=1.4.3,<3.0
@@ -13,6 +13,16 @@ psutil>=4.3.0
 PyYAML>=3.11
 pyzmq>=15.2.0
 scipy>=0.15.1,<1.5
-wxPython>=4.0.4,<4.1
+wxPython~=4.0.1
 setuptools>=39.2.0
 Pyro4==4.18
+
+Odemis~=3.1.7
+docutils~=0.14
+Sphinx~=1.6.7
+opencv-python~=4.5.5.64
+requests~=2.18.4
+pyserial~=3.4
+BlinkStick~=1.1.7
+notify2~=0.3
+scikit-image~=0.17.2
